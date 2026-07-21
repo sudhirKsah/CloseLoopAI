@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { border-color: #28282e; }
+body { background: #09090b; color: #f5f4f8; font-feature-settings: "ss01" 1, "cv02" 1; }
+::selection { background: #75e0bd; color: #09090b; }
+.grid-bg { background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px); background-size: 36px 36px; }

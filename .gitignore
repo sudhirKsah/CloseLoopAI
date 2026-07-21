@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+venv/
+env/
+.venv/
+ENV/
+
+# Python Cache & Builds
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Next.js Build
+.next/
+out/
+/.clerk/
+
+# Environment / Local Secrets
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.*.local
+
+# System Files
+.DS_Store
+Thumbs.db
