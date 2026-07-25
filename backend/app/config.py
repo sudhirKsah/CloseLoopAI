@@ -1,7 +1,10 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
-    database_url: str = "postgresql+psycopg://closeloop:closeloop@localhost:5432/closeloop"
+    database_url: str = (
+        "postgresql+psycopg://closeloop:closeloop@localhost:5432/closeloop"
+    )
     redis_url: str = "redis://localhost:6379/0"
     recall_api_key: str = ""
     recall_region: str = "us-east-1"
@@ -46,5 +49,6 @@ class Settings(BaseSettings):
     # ]
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
 
 settings = Settings()
