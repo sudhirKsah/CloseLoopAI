@@ -1,2 +1,4 @@
 import { AuthForm } from "@/components/auth-form";
-export default function Forgot() { return <AuthForm mode="login"/>; }
+export default function Forgot() {
+  return <AuthForm mode="login" />;
+}
