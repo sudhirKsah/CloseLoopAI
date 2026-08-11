@@ -23,6 +23,7 @@ out/
 
 # Environment / Local Secrets
 .env
+.env.bak.*
 .env.local
 .env.development
 .env.production
