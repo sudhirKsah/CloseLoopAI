@@ -6,8 +6,10 @@ import { ArrowLeft, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useApi } from "@/hooks/use-api";
 import { useWorkspace } from "@/components/workspace-provider";
+import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type MeetingDetail = {
   id: string;
@@ -42,8 +44,20 @@ type TaskDetail = {
   external_refs: unknown;
 };
 function Loading({ error }: { error?: string }) {
+  if (error)
+    return (
+      <Card className="border-amber-300/20 p-8 text-sm text-amber-100">
+        <p className="font-medium">Unable to load</p>
+        <p className="mt-2 text-zinc-500">{error}</p>
+      </Card>
+    );
   return (
-    <Card className="p-8 text-sm text-zinc-500">{error ?? "Loading…"}</Card>
+    <div className="space-y-4">
+      <Skeleton className="h-5 w-24" />
+      <Skeleton className="h-10 w-64" />
+      <Skeleton className="h-32 rounded-2xl" />
+      <Skeleton className="h-32 rounded-2xl" />
+    </div>
   );
 }
 function Values({ title, value }: { title: string; value: unknown }) {
@@ -61,6 +75,7 @@ function Values({ title, value }: { title: string; value: unknown }) {
 }
 export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
   const { workspaceId } = useWorkspace();
+  const toast = useToast();
   const q = useApi<MeetingDetail>(
     workspaceId ? `/workspaces/${workspaceId}/meetings/${meetingId}` : "",
   );
@@ -72,7 +87,10 @@ export function MeetingDetailPage({ meetingId }: { meetingId: string }) {
       await api(`/transcripts/${q.data.transcript_id}/extract`, {
         method: "POST",
       });
+      toast("Extraction started", "success");
       await q.reload();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Extraction failed", "error");
     } finally {
       setExtracting(false);
     }

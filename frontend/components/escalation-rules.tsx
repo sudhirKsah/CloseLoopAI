@@ -1,11 +1,15 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { api } from "@/lib/api";
 import { useApi } from "@/hooks/use-api";
 import { useWorkspace } from "@/components/workspace-provider";
+import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 type Rule = {
   id: string;
   name: string;
@@ -16,6 +20,7 @@ type Rule = {
 };
 export function EscalationRules() {
   const { workspaceId } = useWorkspace();
+  const toast = useToast();
   const q = useApi<Rule[]>(
     workspaceId ? `/execution/workspaces/${workspaceId}/escalation-rules` : "",
   );
@@ -43,8 +48,11 @@ export function EscalationRules() {
                 },
         }),
       });
+      toast("Escalation rule created", "success");
       event.currentTarget.reset();
       await q.reload();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Failed to create rule", "error");
     } finally {
       setSaving(false);
     }
@@ -110,22 +118,40 @@ export function EscalationRules() {
         </form>
       </Card>
       <div className="mt-5 grid gap-3">
-        {q.data?.map((rule) => (
-          <Card key={rule.id} className="p-5">
-            <div className="flex justify-between gap-4">
-              <div>
-                <p className="font-medium">{rule.name}</p>
-                <p className="mt-1 text-xs text-zinc-500">
-                  Priority {rule.priority} ·{" "}
-                  {rule.enabled ? "Enabled" : "Disabled"}
-                </p>
-              </div>
-              <pre className="max-w-[50%] whitespace-pre-wrap text-right text-xs text-zinc-500">
-                {JSON.stringify({ when: rule.conditions, then: rule.action })}
-              </pre>
-            </div>
+        {q.loading ? (
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-20 rounded-2xl" />
+            ))}
+          </div>
+        ) : q.error ? (
+          <Card className="border-amber-300/20 p-5 text-sm text-amber-100">
+            Unable to load rules: {q.error}
           </Card>
-        ))}
+        ) : q.data?.length === 0 ? (
+          <EmptyState
+            icon={<AlertTriangle size={24} />}
+            title="No escalation rules yet"
+            description="Create rules to get Slack alerts when tasks stall. For example: no activity for 3 days → remind owner, 5 days → escalate to manager."
+          />
+        ) : (
+          q.data?.map((rule) => (
+            <Card key={rule.id} className="p-5">
+              <div className="flex justify-between gap-4">
+                <div>
+                  <p className="font-medium">{rule.name}</p>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Priority {rule.priority} ·{" "}
+                    {rule.enabled ? "Enabled" : "Disabled"}
+                  </p>
+                </div>
+                <pre className="max-w-[50%] whitespace-pre-wrap text-right text-xs text-zinc-500">
+                  {JSON.stringify({ when: rule.conditions, then: rule.action })}
+                </pre>
+              </div>
+            </Card>
+          ))
+        )}
       </div>
     </main>
   );

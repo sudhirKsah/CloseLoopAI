@@ -1,4 +1,4 @@
-import { WorkspacePage } from "@/components/workspace-page";
+import { PeoplePage } from "@/components/people-page";
 export default function Page() {
-  return <WorkspacePage page="people" />;
+  return <PeoplePage />;
 }

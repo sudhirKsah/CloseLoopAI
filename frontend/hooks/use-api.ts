@@ -1,7 +1,10 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/components/auth-provider";
+
 export function useApi<T>(path: string) {
+  const { token, loading: authLoading } = useAuth();
   const [data, setData] = useState<T | undefined>(),
     [error, setError] = useState<string>(),
     [loading, setLoading] = useState(Boolean(path));
@@ -9,6 +12,10 @@ export function useApi<T>(path: string) {
     if (!path) {
       setLoading(false);
       setError("Please select or create a workspace to get started.");
+      return;
+    }
+    if (!token) {
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -20,9 +27,10 @@ export function useApi<T>(path: string) {
     } finally {
       setLoading(false);
     }
-  }, [path]);
+  }, [path, token]);
   useEffect(() => {
+    if (authLoading) return;
     void reload();
-  }, [reload]);
+  }, [reload, authLoading]);
   return { data, error, loading, reload };
 }

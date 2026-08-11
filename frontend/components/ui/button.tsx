@@ -10,7 +10,7 @@ export const Button = forwardRef<
   <button
     ref={ref}
     className={cn(
-      "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition focus:outline-none focus:ring-2 focus:ring-emerald-300/50 disabled:pointer-events-none disabled:opacity-50",
+      "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-[transform,background-color,border-color,opacity] duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/50 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50",
       {
         primary: "bg-emerald-300 text-zinc-950 hover:bg-emerald-200",
         secondary:

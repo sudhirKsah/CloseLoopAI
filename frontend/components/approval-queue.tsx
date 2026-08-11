@@ -1,11 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { ShieldCheck } from "lucide-react";
 import { api } from "@/lib/api";
 import { useApi } from "@/hooks/use-api";
 import { useWorkspace } from "@/components/workspace-provider";
+import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 type Candidate = {
   id: string;
   title: string;
@@ -19,6 +24,7 @@ type Candidate = {
 };
 export function ApprovalQueue() {
   const { workspaceId, me } = useWorkspace();
+  const toast = useToast();
   const q = useApi<Candidate[]>(
     workspaceId ? `/task-candidates/workspace/${workspaceId}` : "",
   );
@@ -34,7 +40,13 @@ export function ApprovalQueue() {
         method: "POST",
         body: JSON.stringify({ reviewer_id: me.id, decision }),
       });
+      toast(
+        decision === "approve" ? "Task approved" : "Task rejected",
+        decision === "approve" ? "success" : "info",
+      );
       await q.reload();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Review failed", "error");
     } finally {
       setBusy(undefined);
     }
@@ -50,9 +62,16 @@ export function ApprovalQueue() {
       </p>
       <div className="mt-7 grid gap-4">
         {q.loading ? (
-          <Card className="p-6 text-sm text-zinc-500">Loading candidates…</Card>
+          <div className="space-y-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-40 rounded-2xl" />
+            ))}
+          </div>
         ) : q.error ? (
-          <Card className="p-6 text-sm text-rose-200">{q.error}</Card>
+          <Card className="border-amber-300/20 p-6 text-sm text-amber-100">
+            <p className="font-medium">Unable to load approvals</p>
+            <p className="mt-2 text-zinc-500">{q.error}</p>
+          </Card>
         ) : (
           (q.data
             ?.filter((x) => x.state === "pending")
@@ -97,9 +116,11 @@ export function ApprovalQueue() {
                 </div>
               </Card>
             )) ?? (
-            <Card className="p-6 text-sm text-zinc-500">
-              No extracted tasks need review.
-            </Card>
+            <EmptyState
+              icon={<ShieldCheck size={24} />}
+              title="No tasks need review"
+              description="When the AI extracts low-confidence commitments from meetings, they'll appear here for your approval."
+            />
           ))
         )}
       </div>

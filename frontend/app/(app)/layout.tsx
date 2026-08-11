@@ -1,13 +1,12 @@
 import { AppShell } from "@/components/app-shell";
-import { SessionBridge } from "@/components/session-bridge";
 import { WorkspaceProvider } from "@/components/workspace-provider";
+import { AuthGuard } from "@/components/auth-guard";
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <>
-      <SessionBridge />
+    <AuthGuard>
       <WorkspaceProvider>
         <AppShell>{children}</AppShell>
       </WorkspaceProvider>
-    </>
+    </AuthGuard>
   );
 }

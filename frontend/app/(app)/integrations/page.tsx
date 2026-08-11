@@ -1,4 +1,4 @@
-import { WorkspacePage } from "@/components/workspace-page";
+import { IntegrationsPage } from "@/components/integrations-page";
 export default function Page() {
-  return <WorkspacePage page="integrations" />;
+  return <IntegrationsPage />;
 }

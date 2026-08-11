@@ -2,7 +2,16 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { CalendarClock, FileText, RefreshCw } from "lucide-react";
+import {
+  CalendarClock,
+  FileText,
+  Lightbulb,
+  ListChecks,
+  RefreshCw,
+  BarChart3,
+  FileBarChart,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { useApi } from "@/hooks/use-api";
 import { useWorkspace } from "@/components/workspace-provider";
@@ -12,15 +21,16 @@ import {
 } from "@/components/workspace-actions";
 import type {
   Insight,
-  Integration,
   Meeting,
   Overview,
-  Person,
   Report,
   Task,
 } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useToast } from "@/components/ui/toast";
+import { CardSkeleton, ListSkeleton, Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 
 const title: Record<string, [string, string, string]> = {
   overview: [
@@ -85,15 +95,16 @@ function State({
   error,
   loading,
   empty,
+  emptyIcon,
+  emptyAction,
 }: {
   error?: string;
   loading: boolean;
   empty: string;
+  emptyIcon?: React.ReactNode;
+  emptyAction?: React.ReactNode;
 }) {
-  if (loading)
-    return (
-      <Card className="p-8 text-sm text-zinc-500">Loading workspace data…</Card>
-    );
+  if (loading) return null;
   if (error)
     return (
       <Card className="border-amber-300/20 p-8 text-sm text-amber-100">
@@ -104,7 +115,24 @@ function State({
         </p>
       </Card>
     );
-  return <Card className="p-8 text-sm text-zinc-500">{empty}</Card>;
+  if (emptyIcon) {
+    return (
+      <EmptyState
+        icon={emptyIcon}
+        title={empty}
+        description=""
+      >
+        {emptyAction}
+      </EmptyState>
+    );
+  }
+  return (
+    <EmptyState
+      icon={<ListChecks size={24} />}
+      title={empty}
+      description=""
+    />
+  );
 }
 function TaskRows({ tasks }: { tasks: Task[] }) {
   if (!tasks.length)
@@ -142,11 +170,34 @@ function OverviewPage() {
   const q = useApi<Overview>(
     workspaceId ? `/workspaces/${workspaceId}/overview` : "",
   );
-  if (!q.data)
+  if (q.loading)
     return (
       <>
         <Header page="overview" />
-        <State {...q} empty="No execution data yet." />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <CardSkeleton key={i} />
+          ))}
+        </div>
+        <Card className="mt-6">
+          <div className="border-b border-white/[.08] p-5">
+            <Skeleton className="h-5 w-32" />
+          </div>
+          <ListSkeleton count={4} />
+        </Card>
+      </>
+    );
+  if (q.error || !q.data)
+    return (
+      <>
+        <Header page="overview" />
+        <EmptyState
+          icon={<BarChart3 size={24} />}
+          title="No execution data yet"
+          description="Add a meeting and let the AI bot extract decisions. Tasks and execution scores will appear here."
+          actionLabel="Add a meeting"
+          actionHref="/meetings"
+        />
       </>
     );
   const d = q.data;
@@ -186,7 +237,15 @@ function MeetingsPage() {
         page="meetings"
         action={<MeetingCreateDialog onCreated={q.reload} />}
       />
-      {q.data ? (
+      {q.loading ? (
+        <div className="grid gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 rounded-2xl" />
+          ))}
+        </div>
+      ) : q.error ? (
+        <State error={q.error} loading={false} empty="" />
+      ) : q.data && q.data.length > 0 ? (
         <div className="grid gap-4">
           {q.data.map((m) => (
             <Link href={`/meetings/${m.id}`} key={m.id}>
@@ -208,7 +267,11 @@ function MeetingsPage() {
           ))}
         </div>
       ) : (
-        <State {...q} empty="No meetings captured yet." />
+        <EmptyState
+          icon={<CalendarClock size={24} />}
+          title="No meetings captured yet"
+          description={`Click "Add meeting" above to send an AI bot to your next Google Meet, Zoom, or Teams call.`}
+        />
       )}
     </>
   );
@@ -222,50 +285,20 @@ function TasksPage() {
     <>
       <Header page="tasks" action={<TaskCreateDialog onCreated={q.reload} />} />
       <Card>
-        {q.data ? (
+        {q.loading ? (
+          <ListSkeleton count={5} />
+        ) : q.error ? (
+          <State error={q.error} loading={false} empty="" />
+        ) : q.data ? (
           <TaskRows tasks={q.data} />
         ) : (
-          <State {...q} empty="No tasks exist in this workspace." />
+          <EmptyState
+            icon={<ListChecks size={24} />}
+            title="No tasks yet"
+            description="Tasks are created from meeting extractions, or you can create one manually with the button above."
+          />
         )}
       </Card>
-    </>
-  );
-}
-function PeoplePage() {
-  const { workspaceId } = useWorkspace();
-  const q = useApi<Person[]>(
-    workspaceId ? `/workspaces/${workspaceId}/people` : "",
-  );
-  return (
-    <>
-      <Header page="people" />
-      {q.data ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {q.data.map((p) => (
-            <Card key={p.id} className="p-5">
-              <div className="flex items-center gap-3">
-                <span className="grid h-10 w-10 place-items-center rounded-full bg-white/[.08] text-xs">
-                  {p.name
-                    .split(" ")
-                    .map((x) => x[0])
-                    .join("")}
-                </span>
-                <div>
-                  <p className="font-medium">{p.name}</p>
-                  <p className="text-xs text-zinc-500">
-                    {p.department ?? "Unassigned"} ·{" "}
-                    {p.dashboard_access
-                      ? "Dashboard access"
-                      : "Directory record"}
-                  </p>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <State {...q} empty="No people have been synced into the directory." />
-      )}
     </>
   );
 }
@@ -277,7 +310,15 @@ function AnalyticsPage() {
   return (
     <>
       <Header page="analytics" />
-      {q.data ? (
+      {q.loading ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <CardSkeleton key={i} />
+          ))}
+        </div>
+      ) : q.error ? (
+        <State error={q.error} loading={false} empty="" />
+      ) : q.data && q.data.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2">
           {q.data.map((i) => (
             <Card key={i.id} className="p-5">
@@ -297,96 +338,20 @@ function AnalyticsPage() {
           ))}
         </div>
       ) : (
-        <State {...q} empty="Insights appear after your first weekly report." />
-      )}
-    </>
-  );
-}
-const providers = [
-  "github",
-  "slack",
-  "google_calendar",
-  "microsoft_calendar",
-  "jira",
-  "linear",
-  "notion",
-] as const;
-function IntegrationsPage() {
-  const { workspaceId, me } = useWorkspace();
-  const q = useApi<Integration[]>(
-    workspaceId ? `/workspaces/${workspaceId}/integrations` : "",
-  );
-  const [busy, setBusy] = useState<string>();
-  const integrations = q.data ?? [];
-  const connect = async (provider: string) => {
-    if (!workspaceId || !me) return;
-    setBusy(provider);
-    try {
-      const result = await api<{ authorization_url: string }>(
-        `/integrations/${provider}/connect?workspace_id=${workspaceId}&user_id=${me.id}&redirect_uri=${encodeURIComponent(`${window.location.origin}/integrations`)}`,
-      );
-      window.location.assign(result.authorization_url);
-    } catch (error) {
-      alert(error instanceof Error ? error.message : "Connection failed");
-    } finally {
-      setBusy(undefined);
-    }
-  };
-  const disconnect = async (id: string) => {
-    if (!confirm("Disconnect this integration?")) return;
-    await api(`/integrations/${id}`, { method: "DELETE" });
-    await q.reload();
-  };
-  return (
-    <>
-      <Header page="integrations" />
-      {q.data ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          {providers.map((provider) => {
-            const item = integrations.find((x) => x.provider === provider);
-            const label = provider.replaceAll("_", " ");
-            return (
-              <Card key={provider} className="flex items-center gap-4 p-5">
-                <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/[.07] text-sm font-semibold">
-                  {label[0].toUpperCase()}
-                </span>
-                <div className="flex-1">
-                  <p className="font-medium capitalize">{label}</p>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    {item?.state === "connected"
-                      ? "Connected and ready"
-                      : "Not connected"}
-                  </p>
-                </div>
-                {item?.state === "connected" ? (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => void disconnect(item.id)}
-                  >
-                    Disconnect
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    disabled={busy === provider || !me}
-                    onClick={() => void connect(provider)}
-                  >
-                    {busy === provider ? "Opening…" : "Connect"}
-                  </Button>
-                )}
-              </Card>
-            );
-          })}
-        </div>
-      ) : (
-        <State {...q} empty="No integrations are configured yet." />
+        <EmptyState
+          icon={<Lightbulb size={24} />}
+          title="No insights yet"
+          description="Insights are generated from your weekly execution reports. Generate your first report to see trends and patterns."
+          actionLabel="Go to reports"
+          actionHref="/reports"
+        />
       )}
     </>
   );
 }
 function ReportsPage() {
   const { workspaceId } = useWorkspace();
+  const toast = useToast();
   const q = useApi<Report[]>(
     workspaceId ? `/execution/workspaces/${workspaceId}/reports` : "",
   );
@@ -397,7 +362,10 @@ function ReportsPage() {
       await api(`/execution/workspaces/${workspaceId}/reports`, {
         method: "POST",
       });
+      toast("Report generation started", "success");
       await q.reload();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Failed to generate", "error");
     } finally {
       setCreating(false);
     }
@@ -416,7 +384,15 @@ function ReportsPage() {
           </Button>
         }
       />
-      {q.data ? (
+      {q.loading ? (
+        <div className="grid gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 rounded-2xl" />
+          ))}
+        </div>
+      ) : q.error ? (
+        <State error={q.error} loading={false} empty="" />
+      ) : q.data && q.data.length > 0 ? (
         <div className="grid gap-4">
           {q.data.map((r) => (
             <Card key={r.id} className="flex items-center gap-4 p-5">
@@ -439,71 +415,148 @@ function ReportsPage() {
           ))}
         </div>
       ) : (
-        <State {...q} empty="No reports have been generated." />
+        <EmptyState
+          icon={<FileBarChart size={24} />}
+          title="No reports generated yet"
+          description={`Click "Generate report" above to create a weekly execution summary with completion rates and trend scores.`}
+        />
       )}
     </>
   );
 }
 function SettingsPage() {
-  const { workspaceId } = useWorkspace();
+  const { workspaceId, me, refresh } = useWorkspace();
+  const toast = useToast();
   const q = useApi<{
     id: string;
     name: string;
     settings: Record<string, unknown>;
   }>(workspaceId ? `/settings/workspaces/${workspaceId}` : "");
   const [name, setName] = useState("");
-  const [saved, setSaved] = useState(false);
-  const save = async () => {
+  const [profileName, setProfileName] = useState("");
+  const [profileTz, setProfileTz] = useState("");
+  const [savingWorkspace, setSavingWorkspace] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const saveWorkspace = async () => {
     if (!q.data) return;
-    await api(`/settings/workspaces/${workspaceId}`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        name: name || q.data.name,
-        settings: q.data.settings,
-      }),
-    });
-    setSaved(true);
-    await q.reload();
+    setSavingWorkspace(true);
+    try {
+      await api(`/settings/workspaces/${workspaceId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: name || q.data.name,
+          settings: q.data.settings,
+        }),
+      });
+      toast("Workspace settings saved", "success");
+      await q.reload();
+      await refresh();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Save failed", "error");
+    } finally {
+      setSavingWorkspace(false);
+    }
   };
-  if (!q.data)
+  const saveProfile = async () => {
+    setSavingProfile(true);
+    try {
+      await api("/auth/profile", {
+        method: "PATCH",
+        body: JSON.stringify({
+          display_name: profileName || undefined,
+          timezone: profileTz || undefined,
+        }),
+      });
+      toast("Profile updated", "success");
+      await refresh();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Profile update failed", "error");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+  if (q.loading)
     return (
       <>
         <Header page="settings" />
-        <State {...q} empty="Select a workspace to manage settings." />
+        <div className="max-w-2xl space-y-5">
+          <Skeleton className="h-40 rounded-2xl" />
+          <Skeleton className="h-52 rounded-2xl" />
+        </div>
+      </>
+    );
+  if (q.error || !q.data)
+    return (
+      <>
+        <Header page="settings" />
+        <EmptyState
+          icon={<SettingsIcon size={24} />}
+          title="Select a workspace"
+          description="Choose a workspace from the header dropdown to manage its settings."
+        />
       </>
     );
   return (
     <>
       <Header page="settings" />
-      <Card className="max-w-2xl p-5">
-        <p className="font-medium">Workspace profile</p>
-        <label className="mt-5 block text-xs text-zinc-400">
-          Workspace name
-          <input
-            value={name || q.data.name}
-            onChange={(e) => {
-              setName(e.target.value);
-              setSaved(false);
-            }}
-            className="mt-2 h-10 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 text-sm text-white outline-none"
-          />
-        </label>
-        <Button className="mt-5" onClick={() => void save()}>
-          Save settings
-        </Button>
-        {saved && (
-          <p className="mt-3 text-xs text-emerald-300">Settings saved.</p>
-        )}
-        <Link className="mt-6 block text-sm text-emerald-300" href="/approvals">
-          Review extracted task approvals →
-        </Link>
-        <Link
-          className="mt-3 block text-sm text-emerald-300"
-          href="/settings/escalations"
-        >
-          Configure escalation rules →
-        </Link>
-      </Card>
+      <div className="grid gap-5 max-w-2xl">
+        <Card className="p-5">
+          <p className="font-medium">Workspace profile</p>
+          <label className="mt-5 block text-xs text-zinc-400">
+            Workspace name
+            <input
+              value={name || q.data.name}
+              onChange={(e) => setName(e.target.value)}
+              className="mt-2 h-10 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 text-sm text-white outline-none transition focus:border-emerald-300/60"
+            />
+          </label>
+          <Button className="mt-5" disabled={savingWorkspace} onClick={() => void saveWorkspace()}>
+            {savingWorkspace ? "Saving…" : "Save workspace"}
+          </Button>
+        </Card>
+        <Card className="p-5">
+          <p className="font-medium">Your profile</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            Update your display name and timezone.
+          </p>
+          <label className="mt-5 block text-xs text-zinc-400">
+            Display name
+            <input
+              value={profileName || (me?.name ?? "")}
+              onChange={(e) => setProfileName(e.target.value)}
+              placeholder={me?.name}
+              className="mt-2 h-10 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 text-sm text-white outline-none transition focus:border-emerald-300/60"
+            />
+          </label>
+          <label className="mt-4 block text-xs text-zinc-400">
+            Timezone
+            <input
+              value={profileTz}
+              onChange={(e) => setProfileTz(e.target.value)}
+              placeholder="America/New_York"
+              className="mt-2 h-10 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 text-sm text-white outline-none transition focus:border-emerald-300/60"
+            />
+          </label>
+          <Button className="mt-5" disabled={savingProfile} onClick={() => void saveProfile()}>
+            {savingProfile ? "Saving…" : "Save profile"}
+          </Button>
+        </Card>
+        <Card className="p-5">
+          <p className="font-medium">Automation</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            Configure how CloseLoop nudges and escalates.
+          </p>
+          <Link className="mt-4 block text-sm text-emerald-300" href="/approvals">
+            Review extracted task approvals →
+          </Link>
+          <Link
+            className="mt-3 block text-sm text-emerald-300"
+            href="/settings/escalations"
+          >
+            Configure escalation rules →
+          </Link>
+        </Card>
+      </div>
     </>
   );
 }
@@ -514,9 +567,7 @@ export function WorkspacePage({
     | "overview"
     | "meetings"
     | "tasks"
-    | "people"
     | "analytics"
-    | "integrations"
     | "reports"
     | "settings";
 }) {
@@ -524,9 +575,7 @@ export function WorkspacePage({
     overview: <OverviewPage />,
     meetings: <MeetingsPage />,
     tasks: <TasksPage />,
-    people: <PeoplePage />,
     analytics: <AnalyticsPage />,
-    integrations: <IntegrationsPage />,
     reports: <ReportsPage />,
     settings: <SettingsPage />,
   }[page];
