@@ -10,6 +10,7 @@ from ..models.integrations import (
 from ..models.work import Task
 from .jira import JiraClient
 from .linear import LinearClient
+from .directory import external_id_for
 
 
 async def sync_task(
@@ -26,6 +27,11 @@ async def sync_task(
     if integration.provider == IntegrationProvider.JIRA:
         client = JiraClient()
         token = await client.token_for(session, integration)
+        assignee = (
+            await external_id_for(session, task.owner_id, "jira")
+            if task.owner_id
+            else None
+        )
         issue = (
             await client.issue(
                 token, integration.config["cloud_id"], mapping.external_id
@@ -37,6 +43,7 @@ async def sync_task(
                 integration.config["project_key"],
                 task.title,
                 task.description,
+                assignee_account_id=assignee,
             )
         )
         if mapping:
@@ -59,11 +66,20 @@ async def sync_task(
     else:
         client = LinearClient()
         token = await client.token_for(session, integration)
+        assignee = (
+            await external_id_for(session, task.owner_id, "linear")
+            if task.owner_id
+            else None
+        )
         issue = (
             await client.issue(token, mapping.external_id)
             if mapping
             else await client.create_issue(
-                token, integration.config["team_id"], task.title, task.description
+                token,
+                integration.config["team_id"],
+                task.title,
+                task.description,
+                assignee_id=assignee,
             )
         )
         if mapping:

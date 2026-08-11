@@ -5,7 +5,7 @@ from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import settings
-from ..models.core import User, WorkspaceMember
+from ..services.directory import resolve_owner
 from ..models.meetings import (
     Meeting,
     MeetingExtraction,
@@ -24,6 +24,50 @@ Use only evidence explicitly supported by transcript chunks. Every decision, tas
 
 class ExtractionError(RuntimeError):
     pass
+
+
+# Validation keywords Cerebras/OpenAI strict structured output does not accept.
+_UNSUPPORTED_SCHEMA_KEYS = {
+    "minLength",
+    "maxLength",
+    "pattern",
+    "format",
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "multipleOf",
+    "minItems",
+    "maxItems",
+    "uniqueItems",
+    "default",
+}
+
+
+def _strict_schema(schema: dict) -> dict:
+    """Prepare a Pydantic JSON schema for strict structured-output mode:
+
+    - Enforce `additionalProperties: false` on every object (required by strict
+      mode; Pydantic omits it by default).
+    - Strip validation-only keywords (minLength, maxLength, pattern, ...) that
+      the provider rejects.
+    """
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            if node.get("type") == "object" or "properties" in node:
+                node.setdefault("additionalProperties", False)
+            for key in list(node.keys()):
+                if key in _UNSUPPORTED_SCHEMA_KEYS:
+                    del node[key]
+                else:
+                    walk(node[key])
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(schema)
+    return schema
 
 
 @dataclass(frozen=True)
@@ -83,7 +127,9 @@ class CerebrasExtractionProvider(MeetingExtractionProvider):
                     "json_schema": {
                         "name": "meeting_extraction",
                         "strict": True,
-                        "schema": MeetingExtractionResult.model_json_schema(),
+                        "schema": _strict_schema(
+                            MeetingExtractionResult.model_json_schema()
+                        ),
                     },
                 },
                 max_completion_tokens=32768,
@@ -216,29 +262,16 @@ async def run_extraction(
                 ],
             )
         )
-    member_rows = (
-        (
-            await session.execute(
-                select(User)
-                .join(WorkspaceMember, WorkspaceMember.user_id == User.id)
-                .where(WorkspaceMember.workspace_id == meeting.workspace_id)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    owners = {user.display_name.casefold(): user.id for user in member_rows}
     candidates: list[TaskCandidate] = []
     for item in result.tasks:
+        owner = await resolve_owner(session, meeting.workspace_id, item.owner_name)
         candidate = TaskCandidate(
             extraction_id=extraction.id,
             workspace_id=meeting.workspace_id,
             ref=item.ref,
             title=item.title,
             description=item.description,
-            owner_id=(
-                owners.get(item.owner_name.casefold()) if item.owner_name else None
-            ),
+            owner_id=owner.id if owner else None,
             owner_name=item.owner_name,
             due_at=item.deadline,
             confidence=item.confidence,

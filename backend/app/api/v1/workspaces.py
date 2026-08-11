@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...api.deps import require_workspace_admin
 from ...db.session import get_session
 from ...models.core import User, WorkspaceMember
-from ...models.integrations import Integration
+from ...models.integrations import GithubRepo, Integration, IntegrationProvider
 from ...models.meetings import Meeting, Transcript, TranscriptChunk, MeetingExtraction
 from ...models.operations import Insight
 from ...models.work import Task, TaskActivityMatch, TaskDependency, TaskState
@@ -286,16 +286,63 @@ async def integrations(
         .scalars()
         .all()
     )
-    return [
-        {
-            "id": str(x.id),
-            "provider": x.provider.value,
-            "state": x.state.value,
-            "config": x.config,
-            "last_synced_at": x.last_synced_at,
+    result = []
+    for x in rows:
+        details = await _integration_details(session, x)
+        result.append(
+            {
+                "id": str(x.id),
+                "provider": x.provider.value,
+                "state": x.state.value,
+                "config": x.config,
+                "last_synced_at": x.last_synced_at,
+                "details": details,
+            }
+        )
+    return result
+
+
+async def _integration_details(session: AsyncSession, integration: Integration) -> dict:
+    """Human-readable connected details shown on the integrations page."""
+    config = integration.config or {}
+    provider = integration.provider
+    if provider == IntegrationProvider.GITHUB:
+        repos = (
+            (
+                await session.execute(
+                    select(GithubRepo).where(
+                        GithubRepo.integration_id == integration.id,
+                        GithubRepo.is_active.is_(True),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return {
+            "repos": [
+                {"full_name": r.full_name, "default_branch": r.default_branch}
+                for r in repos
+            ],
+            "repo_count": len(repos),
         }
-        for x in rows
-    ]
+    if provider == IntegrationProvider.JIRA:
+        resources = config.get("resources") or []
+        site = resources[0].get("name") or resources[0].get("url") if resources else None
+        return {"project_key": config.get("project_key"), "site": site}
+    if provider == IntegrationProvider.LINEAR:
+        return {"team_id": config.get("team_id"), "team_name": config.get("team_name")}
+    if provider == IntegrationProvider.SLACK:
+        team = config.get("team") or {}
+        return {"team_name": team.get("name"), "team_id": team.get("id")}
+    if provider in (
+        IntegrationProvider.GOOGLE_CALENDAR,
+        IntegrationProvider.MICROSOFT_CALENDAR,
+    ):
+        return {"account": config.get("account") or config.get("email")}
+    if provider == IntegrationProvider.KGMEMORY:
+        return {"base_url": config.get("base_url")}
+    return {}
 
 
 @router.get("/{workspace_id}/insights")

@@ -1,5 +1,6 @@
+import logging
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,14 +8,36 @@ from ...config import settings
 from ...db.session import get_session
 from ...api.deps import current_user
 from ...models.core import User, WorkspaceMember
-from ...jobs import process_recall_webhook
 from ...models.meetings import Meeting, MeetingProvider, MeetingStatus
 from ...models.webhooks import WebhookEvent
 from ...schemas.recall import CreateRecallBotRequest
 from ...services.recall_client import RecallAPIError, RecallClient
+from ...services.recall_events import run_recall_pipeline
 from ...services.recall_security import RecallSignatureVerifier
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/recall", tags=["recall"])
+
+
+def dispatch_recall_pipeline(event_db_id: str, background_tasks: BackgroundTasks) -> str:
+    """Prefer Celery (scalable, survives restarts); fall back to in-process
+    BackgroundTasks if the broker/worker is unreachable so processing never
+    silently stalls.
+    """
+    try:
+        from ...jobs import process_recall_webhook
+
+        # retry=False so a dead broker raises immediately instead of blocking.
+        process_recall_webhook.apply_async(args=[event_db_id], retry=False)
+        return "celery"
+    except Exception:
+        log.warning(
+            "Celery unavailable; processing Recall webhook %s in-process",
+            event_db_id,
+            exc_info=True,
+        )
+        background_tasks.add_task(run_recall_pipeline, event_db_id)
+        return "inline"
 
 
 def provider_for_url(url: str) -> MeetingProvider:
@@ -72,7 +95,7 @@ async def create_bot(
         meeting.raw_metadata = {"recall_error": str(error)}
         await session.commit()
         raise HTTPException(
-            status_code=502, detail="Recall could not create the bot"
+            status_code=502, detail=f"Recall could not create the bot: {error}"
         ) from error
     meeting.recall_bot_id = recall_bot["id"]
     meeting.raw_metadata = {"recall": recall_bot}
@@ -85,7 +108,9 @@ async def create_bot(
 
 
 async def receive_event(
-    request: Request, session: AsyncSession = Depends(get_session)
+    request: Request,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
 ) -> dict:
     raw_body = await request.body()
     secret = (
@@ -112,20 +137,29 @@ async def receive_event(
     )
     event_db_id = (await session.execute(statement)).scalar_one_or_none()
     await session.commit()
+    dispatched = None
     if event_db_id:
-        process_recall_webhook.delay(str(event_db_id))
-    return {"accepted": True, "duplicate": event_db_id is None}
+        dispatched = dispatch_recall_pipeline(str(event_db_id), background_tasks)
+    return {
+        "accepted": True,
+        "duplicate": event_db_id is None,
+        "dispatched": dispatched,
+    }
 
 
 @router.post("/webhooks/dashboard", status_code=status.HTTP_202_ACCEPTED)
 async def dashboard_webhook(
-    request: Request, session: AsyncSession = Depends(get_session)
+    request: Request,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
 ) -> dict:
-    return await receive_event(request, session)
+    return await receive_event(request, background_tasks, session)
 
 
 @router.post("/webhooks/realtime", status_code=status.HTTP_202_ACCEPTED)
 async def realtime_webhook(
-    request: Request, session: AsyncSession = Depends(get_session)
+    request: Request,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
 ) -> dict:
-    return await receive_event(request, session)
+    return await receive_event(request, background_tasks, session)

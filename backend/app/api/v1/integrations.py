@@ -2,6 +2,8 @@ import secrets, uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,11 +23,69 @@ from ...services.github import GithubClient, sync_repo_activity
 from ...services.calendar import CalendarClient, sync_calendar
 from ...services.slack import SlackClient
 from ...services.notion import NotionClient
+from ...services.kgmemory import KGMemoryClient, KGMemoryError
 from ...models.integrations import GithubRepo
 from ...models.core import ExternalIdentity, User, WorkspaceMember, MemberRole
 from ...api.deps import current_user
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
+
+
+class KGMemoryConnectRequest(BaseModel):
+    workspace_id: uuid.UUID
+    api_key: str
+    base_url: str | None = None
+
+
+@router.post("/kgmemory/connect")
+async def connect_kgmemory(
+    body: KGMemoryConnectRequest,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Connect a workspace to a kgmemory organization using a static
+    `X-API-Key` (kgmemory has no OAuth flow — keys are issued via its own
+    `/orgs/{id}/api-keys` endpoint). Verifies the key works before saving it.
+    """
+    member = (
+        await session.execute(
+            select(WorkspaceMember).where(
+                WorkspaceMember.workspace_id == body.workspace_id,
+                WorkspaceMember.user_id == user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not member or member.role.value not in ("owner", "admin"):
+        raise HTTPException(403, "Workspace admin access required")
+    client = KGMemoryClient(body.api_key, body.base_url)
+    try:
+        await client.list_people()
+    except KGMemoryError as error:
+        raise HTTPException(400, f"Could not verify kgmemory API key: {error}")
+    integration = (
+        await session.execute(
+            select(Integration).where(
+                Integration.workspace_id == body.workspace_id,
+                Integration.provider == IntegrationProvider.KGMEMORY,
+            )
+        )
+    ).scalar_one_or_none()
+    config = {
+        "api_key_encrypted": CredentialVault().encrypt(body.api_key),
+        **({"base_url": body.base_url} if body.base_url else {}),
+    }
+    if integration:
+        integration.config, integration.state = config, IntegrationState.CONNECTED
+    else:
+        integration = Integration(
+            workspace_id=body.workspace_id,
+            provider=IntegrationProvider.KGMEMORY,
+            external_account_id="default",
+            config=config,
+        )
+        session.add(integration)
+    await session.commit()
+    return {"connected": True, "integration_id": str(integration.id)}
 
 
 def client(provider: IntegrationProvider):
@@ -80,6 +140,13 @@ async def connect(
         or membership.role.value not in ("owner", "admin")
     ):
         raise HTTPException(403, "Workspace admin access required")
+    # The redirect_uri sent to the OAuth provider MUST be the backend callback
+    # endpoint (that's where the provider sends the ?code=). The frontend
+    # `redirect_uri` param is where we send the user AFTER the callback completes.
+    callback_uri = (
+        f"{settings.public_api_base_url.rstrip('/')}"
+        f"/api/v1/integrations/{provider.value}/callback"
+    )
     state = secrets.token_urlsafe(32)
     session.add(
         OAuthState(
@@ -87,6 +154,8 @@ async def connect(
             workspace_id=workspace_id,
             user_id=user_id,
             state=state,
+            # Store the frontend destination — used to redirect the user home
+            # after the callback exchanges the code.
             redirect_uri=redirect_uri,
             expires_at=datetime.now(UTC) + timedelta(minutes=10),
         )
@@ -105,7 +174,7 @@ async def connect(
     params = {
         "response_type": "code",
         "client_id": client_id,
-        "redirect_uri": redirect_uri,
+        "redirect_uri": callback_uri,
         "state": state,
         "scope": app.scopes,
         "prompt": "consent",
@@ -137,7 +206,14 @@ async def callback(
     ).scalar_one_or_none()
     if not record:
         raise HTTPException(400, "OAuth state is invalid or expired")
-    tokens = await client(provider).access_token(code, record.redirect_uri)
+    # Token exchange must use the SAME redirect_uri that was sent to the provider
+    # in the authorize step — i.e. the backend callback URL, not record.redirect_uri
+    # (which holds the frontend destination).
+    callback_uri = (
+        f"{settings.public_api_base_url.rstrip('/')}"
+        f"/api/v1/integrations/{provider.value}/callback"
+    )
+    tokens = await client(provider).access_token(code, callback_uri)
     integration = (
         await session.execute(
             select(Integration).where(
@@ -190,13 +266,16 @@ async def callback(
     if provider == IntegrationProvider.SLACK:
         integration.external_account_id = tokens.get("team", {}).get("id", "default")
         integration.config = {"team": tokens.get("team", {})}
+    # Capture the frontend destination before deleting the state record.
+    return_to = record.redirect_uri or f"{settings.frontend_url.rstrip('/')}/integrations"
     await session.delete(record)
     await session.commit()
-    return {
-        "connected": True,
-        "integration_id": str(integration.id),
-        "config": integration.config,
-    }
+    # Redirect back to the frontend so the user sees the result.
+    separator = "&" if "?" in return_to else "?"
+    return RedirectResponse(
+        url=f"{return_to}{separator}connected={provider.value}",
+        status_code=302,
+    )
 
 
 @router.get("/github/{integration_id}/repositories")
@@ -238,7 +317,15 @@ async def select_github_repository(
         )
         session.add(repo)
         await session.commit()
-    return {"repo_id": str(repo.id), "full_name": repo.full_name}
+    # Register a real-time webhook (best-effort; poller is the fallback).
+    hook = await GithubClient().ensure_webhook(
+        await GithubClient().token_for(session, integration), full_name
+    )
+    return {
+        "repo_id": str(repo.id),
+        "full_name": repo.full_name,
+        "webhook_registered": bool(hook),
+    }
 
 
 @router.post("/github/repos/{repo_id}/sync")
@@ -346,7 +433,24 @@ async def jira_projects(
     if not integration or integration.provider != IntegrationProvider.JIRA:
         raise HTTPException(404, "Jira integration not found")
     token = await JiraClient().token_for(session, integration)
-    return await JiraClient().projects(token, integration.config["cloud_id"])
+    result = await JiraClient().projects(token, integration.config["cloud_id"])
+    # Jira returns {"values": [...]} from project/search
+    projects = result.get("values", result) if isinstance(result, dict) else result
+    return {"projects": projects, "selected": integration.config.get("project_key")}
+
+
+@router.post("/jira/{integration_id}/projects/{project_key}")
+async def select_jira_project(
+    integration_id: uuid.UUID,
+    project_key: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    integration = await session.get(Integration, integration_id)
+    if not integration or integration.provider != IntegrationProvider.JIRA:
+        raise HTTPException(404, "Jira integration not found")
+    integration.config = {**integration.config, "project_key": project_key}
+    await session.commit()
+    return {"selected": project_key}
 
 
 @router.get("/linear/{integration_id}/projects")
@@ -361,6 +465,35 @@ async def linear_projects(
             await LinearClient().token_for(session, integration)
         )
     }
+
+
+@router.get("/linear/{integration_id}/teams")
+async def linear_teams(
+    integration_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+) -> dict:
+    integration = await session.get(Integration, integration_id)
+    if not integration or integration.provider != IntegrationProvider.LINEAR:
+        raise HTTPException(404, "Linear integration not found")
+    return {
+        "teams": await LinearClient().teams(
+            await LinearClient().token_for(session, integration)
+        ),
+        "selected": integration.config.get("team_id"),
+    }
+
+
+@router.post("/linear/{integration_id}/teams/{team_id}")
+async def select_linear_team(
+    integration_id: uuid.UUID,
+    team_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    integration = await session.get(Integration, integration_id)
+    if not integration or integration.provider != IntegrationProvider.LINEAR:
+        raise HTTPException(404, "Linear integration not found")
+    integration.config = {**integration.config, "team_id": team_id}
+    await session.commit()
+    return {"selected": team_id}
 
 
 @router.delete("/{integration_id}", status_code=204)

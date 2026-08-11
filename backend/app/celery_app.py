@@ -13,6 +13,13 @@ celery.conf.update(
     task_serializer="json",
     result_serializer="json",
     accept_content=["json"],
+    # Fail fast when the broker is unreachable so callers can fall back to
+    # in-process execution instead of hanging on connection retries.
+    broker_connection_retry_on_startup=False,
+    broker_transport_options={
+        "socket_timeout": 2,
+        "socket_connect_timeout": 2,
+    },
     beat_schedule={
         "daily-execution-monitor": {
             "task": "monitor.organizations",
@@ -25,6 +32,10 @@ celery.conf.update(
         "hourly-integration-sync": {
             "task": "integrations.sync_all",
             "schedule": crontab(minute=10),
+        },
+        "hourly-github-sync": {
+            "task": "github.sync_all",
+            "schedule": crontab(minute=25),
         },
     },
 )

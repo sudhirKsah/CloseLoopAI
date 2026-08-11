@@ -20,26 +20,19 @@ class RecallClient:
         join_at: datetime | None,
         metadata: dict,
     ) -> dict:
+        # Transcription uses Recall's own streaming ASR (`recallai_streaming`).
+        # We still consume the COMPLETE transcript after the meeting ends by
+        # downloading the transcript artifact once the bot emits `bot.done`
+        # (see `transcript_download_url`) rather than processing partials live.
         body = {
             "meeting_url": meeting_url,
             "bot_name": bot_name,
             "metadata": metadata,
             "recording_config": {
-                "video_mixed_mp4": None,
                 "transcript": {
                     "provider": {"recallai_streaming": {}},
                     "diarization": {"use_separate_streams_when_available": True},
                 },
-                "realtime_endpoints": [
-                    {
-                        "type": "webhook",
-                        "url": f"{settings.public_api_base_url}/api/v1/webhooks/recall/realtime",
-                        "events": [
-                            "transcript.data",
-                            "participant_events.speaker_changed",
-                        ],
-                    }
-                ],
             },
         }
         if join_at:
@@ -67,3 +60,35 @@ class RecallClient:
                     )
                 return response.json()
         raise RecallAPIError("Create bot retry budget exhausted")
+
+    async def retrieve_bot(self, bot_id: str) -> dict:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0),
+            headers={"Authorization": f"Token {settings.recall_api_key}"},
+        ) as client:
+            response = await client.get(f"{self.base_url}/bot/{bot_id}/")
+            if response.is_error:
+                raise RecallAPIError(
+                    f"Retrieve bot failed ({response.status_code}): {response.text[:500]}"
+                )
+            return response.json()
+
+    def transcript_download_url(self, bot: dict) -> str | None:
+        """Pull the completed transcript's download URL out of a Retrieve Bot
+        response (API 1.11 `media_shortcuts.transcript.data.download_url`)."""
+        for recording in bot.get("recordings", []) or []:
+            shortcut = (recording.get("media_shortcuts") or {}).get("transcript") or {}
+            url = (shortcut.get("data") or {}).get("download_url")
+            if url:
+                return url
+        return None
+
+    async def download_transcript(self, url: str) -> list[dict]:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
+            response = await client.get(url)
+            if response.is_error:
+                raise RecallAPIError(
+                    f"Download transcript failed ({response.status_code})"
+                )
+            data = response.json()
+        return data if isinstance(data, list) else data.get("transcript", [])
