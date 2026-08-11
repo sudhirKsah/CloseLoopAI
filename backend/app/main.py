@@ -11,6 +11,8 @@ from .api.v1.execution import router as execution_router
 from .api.v1.auth import router as auth_router
 from .api.v1.settings import router as settings_router
 from .api.v1.workspaces import router as workspace_router
+from .api.v1.members import router as members_router
+from .api.v1.github_webhooks import router as github_webhooks_router
 from .db.base import Base
 from .db.session import engine
 
@@ -45,6 +47,8 @@ app.include_router(execution_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(settings_router, prefix="/api/v1")
 app.include_router(workspace_router, prefix="/api/v1")
+app.include_router(members_router, prefix="/api/v1")
+app.include_router(github_webhooks_router, prefix="/api/v1")
 
 
 @app.get("/health")

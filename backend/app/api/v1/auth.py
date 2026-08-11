@@ -1,5 +1,8 @@
-import httpx
 import re
+import uuid
+import datetime
+import jwt
+import bcrypt
 from pydantic import BaseModel, EmailStr, Field
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -12,6 +15,48 @@ from ...models.core import MemberRole, Organization, User, Workspace, WorkspaceM
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def _verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode(), hashed.encode())
+
+
+def _create_jwt(user_id: uuid.UUID) -> str:
+    now = datetime.datetime.now(datetime.UTC)
+    payload = {
+        "sub": str(user_id),
+        "iat": now,
+        "exp": now + datetime.timedelta(hours=settings.jwt_expiry_hours),
+    }
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+# ---------------------------------------------------------------------------
+# Request models
+# ---------------------------------------------------------------------------
+
+class SignupRequest(BaseModel):
+    display_name: str = Field(min_length=1, max_length=200)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str = Field(min_length=8, max_length=128)
+
+
 class BootstrapRequest(BaseModel):
     display_name: str
     email: EmailStr
@@ -22,6 +67,179 @@ class ProfileUpdate(BaseModel):
     avatar_url: str | None = None
     timezone: str | None = None
     notification_preferences: dict | None = None
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/signup")
+async def signup(
+    body: SignupRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    existing = (
+        await session.execute(select(User).where(User.email == body.email))
+    ).scalar_one_or_none()
+    if existing:
+        raise HTTPException(409, "An account with this email already exists")
+
+    user = User(
+        email=body.email,
+        display_name=body.display_name,
+        password_hash=_hash_password(body.password),
+        is_login_enabled=True,
+    )
+    session.add(user)
+    await session.flush()
+
+    # Create a private owner workspace for the new user
+    stem = re.sub(r"[^a-z0-9]+", "-", body.display_name.lower()).strip("-") or "workspace"
+    slug = f"{stem}-{str(user.id)[:8]}"
+    organization = Organization(name=f"{body.display_name}'s organization", slug=slug)
+    session.add(organization)
+    await session.flush()
+    workspace = Workspace(
+        organization_id=organization.id, name="Main workspace", slug="main"
+    )
+    session.add(workspace)
+    await session.flush()
+    session.add(
+        WorkspaceMember(
+            workspace_id=workspace.id, user_id=user.id, role=MemberRole.OWNER
+        )
+    )
+    await session.flush()
+
+    from ...services.escalation_rules import seed_default_rules
+    await seed_default_rules(session, workspace.id)
+    await session.commit()
+
+    # Send welcome email if SMTP is configured (non-blocking — don't fail signup)
+    if settings.smtp_host:
+        try:
+            from ...services.email import send_welcome_email
+            send_welcome_email(user.email, user.display_name)
+        except Exception:
+            import logging
+            logging.exception("Failed to send welcome email")
+
+    token = _create_jwt(user.id)
+    return {
+        "token": token,
+        "user": {
+            "id": str(user.id),
+            "email": user.email,
+            "name": user.display_name,
+        },
+    }
+
+
+@router.post("/login")
+async def login(
+    body: LoginRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    user = (
+        await session.execute(select(User).where(User.email == body.email))
+    ).scalar_one_or_none()
+    if not user or not user.password_hash:
+        raise HTTPException(401, "Invalid email or password")
+    if not _verify_password(body.password, user.password_hash):
+        raise HTTPException(401, "Invalid email or password")
+    if not user.is_login_enabled or not user.is_active:
+        raise HTTPException(403, "Account is disabled")
+
+    token = _create_jwt(user.id)
+    return {
+        "token": token,
+        "user": {
+            "id": str(user.id),
+            "email": user.email,
+            "name": user.display_name,
+        },
+    }
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Send a password reset email if the account exists.
+
+    Always returns {"sent": True} to avoid leaking which emails are registered.
+    The email is only sent if the user exists AND has a password set.
+    """
+    user = (
+        await session.execute(select(User).where(User.email == body.email))
+    ).scalar_one_or_none()
+    if not user or not user.password_hash:
+        # Don't reveal whether the email exists — return success silently
+        return {"sent": True}
+
+    # Generate a short-lived reset token (1 hour)
+    now = datetime.datetime.now(datetime.UTC)
+    reset_token = jwt.encode(
+        {
+            "sub": str(user.id),
+            "purpose": "password_reset",
+            "iat": now,
+            "exp": now + datetime.timedelta(hours=1),
+        },
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    reset_link = f"{settings.frontend_url.rstrip('/')}/reset-password?token={reset_token}"
+
+    if settings.smtp_host:
+        # Production — send the email
+        from ...services.email import send_password_reset_email
+        try:
+            send_password_reset_email(user.email, user.display_name, reset_link)
+        except Exception:
+            # Log but don't leak the error to the client
+            import logging
+            logging.exception("Failed to send password reset email")
+            raise HTTPException(500, "Failed to send reset email. Please try again.")
+        return {"sent": True}
+    else:
+        # Dev mode — no SMTP configured. Return the token so the frontend
+        # can show a dev reset form. In production this branch won't run.
+        return {"sent": True, "reset_token": reset_token, "dev_mode": True}
+
+
+@router.post("/reset-password")
+async def reset_password(
+    body: ResetPasswordRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Reset password using a valid reset token."""
+    try:
+        payload = jwt.decode(
+            body.token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(400, "Reset link has expired. Please request a new one.")
+    except jwt.PyJWTError:
+        raise HTTPException(400, "Invalid reset token")
+    if payload.get("purpose") != "password_reset":
+        raise HTTPException(400, "Invalid reset token")
+    user = (
+        await session.execute(
+            select(User).where(User.id == payload["sub"])
+        )
+    ).scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "User not found")
+    if not user.is_active:
+        raise HTTPException(403, "Account is disabled")
+    user.password_hash = _hash_password(body.password)
+    await session.commit()
+    return {"reset": True}
 
 
 @router.get("/me")
@@ -57,6 +275,7 @@ async def bootstrap(
     claims: dict = Depends(verified_claims),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
+    """Legacy endpoint for Clerk-based bootstrap. Kept for backward compat."""
     user = (
         await session.execute(select(User).where(User.clerk_id == claims["sub"]))
     ).scalar_one_or_none()
@@ -77,8 +296,6 @@ async def bootstrap(
         )
     ).scalar_one_or_none()
     if not membership:
-        # Each new account starts with a private owner workspace. Directory records
-        # from integrations do not become dashboard members.
         stem = (
             re.sub(r"[^a-z0-9]+", "-", body.display_name.lower()).strip("-")
             or "workspace"
@@ -99,6 +316,9 @@ async def bootstrap(
                 workspace_id=workspace.id, user_id=user.id, role=MemberRole.OWNER
             )
         )
+        await session.flush()
+        from ...services.escalation_rules import seed_default_rules
+        await seed_default_rules(session, workspace.id)
         await session.commit()
     return {"user_id": str(user.id), "onboarding_required": False}
 
@@ -120,37 +340,7 @@ async def update_profile(
     }
 
 
-@router.post("/email/sync")
-async def sync_verified_email(
-    body: BootstrapRequest,
-    claims: dict = Depends(verified_claims),
-    session: AsyncSession = Depends(get_session),
-) -> dict:
-    """Called only after Clerk completes its email verification/change flow."""
-    user = (
-        await session.execute(select(User).where(User.clerk_id == claims["sub"]))
-    ).scalar_one_or_none()
-    if not user:
-        raise HTTPException(404, "Local account not found")
-    user.email = body.email
-    await session.commit()
-    return {"email": user.email}
-
-
 @router.post("/logout")
-async def logout(claims: dict = Depends(verified_claims)) -> dict:
-    session_id = claims.get("sid")
-    if not session_id:
-        return {
-            "revoked": False,
-            "message": "Clear the client session with Clerk signOut().",
-        }
-    if not settings.clerk_secret_key:
-        raise HTTPException(503, "Clerk backend key is not configured")
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"https://api.clerk.com/v1/sessions/{session_id}/revoke",
-            headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
-        )
-        response.raise_for_status()
+async def logout() -> dict:
+    """Stateless JWT — client just discards the token."""
     return {"revoked": True}

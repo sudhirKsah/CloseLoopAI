@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.core import User, Workspace
 from ..models.operations import Escalation, EscalationRule, Reminder
 from ..models.work import Task, TaskState
-from .accountability import create_reminder
+from .accountability import Tone, create_reminder
 
 
 class RuleEngine:
@@ -113,6 +113,21 @@ class RuleEngine:
                     )
                     session.add(escalation)
                     created.append(escalation)
+                    # Actually notify the escalation recipient (manager/founder),
+                    # not just record the escalation.
+                    await create_reminder(
+                        session,
+                        task,
+                        f"Escalation ({rule.name}) — {task.title} needs attention.",
+                        [],
+                        action.get("channel", "slack"),
+                        recipient_id=recipient,
+                        tone_override=(
+                            Tone.FOUNDER_ESCALATION
+                            if action.get("target") == "founder"
+                            else Tone.MANAGER_ESCALATION
+                        ),
+                    )
         await session.commit()
         return created
 
@@ -152,3 +167,22 @@ DEFAULT_RULES = [
         "action": {"type": "escalate", "target": "manager", "level": 2},
     },
 ]
+
+
+async def seed_default_rules(session: AsyncSession, workspace_id) -> int:
+    """Install the default escalation ladder for a workspace if it has none.
+
+    Without this a fresh workspace has no rules, so no reminders or escalations
+    ever fire. Idempotent: does nothing when rules already exist."""
+    existing = (
+        await session.execute(
+            select(func.count(EscalationRule.id)).where(
+                EscalationRule.workspace_id == workspace_id
+            )
+        )
+    ).scalar_one()
+    if existing:
+        return 0
+    for rule in DEFAULT_RULES:
+        session.add(EscalationRule(workspace_id=workspace_id, **rule))
+    return len(DEFAULT_RULES)

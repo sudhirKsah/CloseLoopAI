@@ -51,8 +51,12 @@ class User(UUIDPrimaryKey, Timestamped, Base):
         String(320), unique=True, nullable=False, index=True
     )
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str | None] = mapped_column(String(200))
     department: Mapped[str | None] = mapped_column(String(160))
+    skills: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    aliases: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     manager_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )

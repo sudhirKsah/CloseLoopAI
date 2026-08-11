@@ -44,8 +44,11 @@ async def create_reminder(
     reason: str,
     blockers: list[str],
     channel: str = "slack",
+    recipient_id=None,
+    tone_override: "Tone | None" = None,
 ) -> Reminder | None:
-    if not task.owner_id:
+    recipient_id = recipient_id or task.owner_id
+    if not recipient_id:
         return None
     prior = (
         (
@@ -58,7 +61,7 @@ async def create_reminder(
         .scalars()
         .all()
     )
-    tone = tone_for(task, len(prior))
+    tone = tone_override or tone_for(task, len(prior))
     previous = [item.body for item in prior[:3]]
     body = await generate_message(task, reason, blockers, tone, previous)
     body_hash = hashlib.sha256(body.strip().casefold().encode()).hexdigest()
@@ -66,7 +69,7 @@ async def create_reminder(
         return None
     reminder = Reminder(
         task_id=task.id,
-        recipient_id=task.owner_id,
+        recipient_id=recipient_id,
         scheduled_for=datetime.now(UTC),
         status=DeliveryStatus.PENDING,
         channel=channel,

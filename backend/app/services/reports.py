@@ -8,6 +8,7 @@ from ..models.operations import Insight, WeeklyReport
 from ..models.core import User, WorkspaceMember
 from .delivery import send_email
 from .analytics import AnalyticsEngine
+from .kgmemory import KGMemoryError, get_client_for_workspace
 
 
 class WeeklyReportService:
@@ -22,6 +23,7 @@ class WeeklyReportService:
         metrics, insights = await AnalyticsEngine().build(
             session, workspace_id, start, period_end
         )
+        insights += await self._kgmemory_insights(session, workspace_id)
         report = (
             await session.execute(
                 select(WeeklyReport).where(
@@ -55,6 +57,50 @@ class WeeklyReportService:
         report.pdf_url = str(path)
         await session.commit()
         return report
+
+    async def _kgmemory_insights(
+        self, session: AsyncSession, workspace_id: str
+    ) -> list[dict]:
+        """Pull cross-meeting memory signals (engineer reliability, who is
+        quietly carrying the team) from kgmemory, when the workspace has
+        connected it. Falls back to nothing if kgmemory isn't configured or
+        unreachable so the report still generates."""
+        client = await get_client_for_workspace(session, workspace_id)
+        if not client:
+            return []
+        try:
+            people = await client.list_people()
+        except KGMemoryError:
+            return []
+        if not people:
+            return []
+        reliable = sorted(
+            people, key=lambda p: p.get("reliability_score", 0), reverse=True
+        )[:5]
+        at_risk = [p for p in people if p.get("reliability_score", 1) < 0.4]
+        return [
+            {
+                "key": "engineer_reliability_kgmemory",
+                "value": [
+                    {"name": p["name"], "score": p["reliability_score"]}
+                    for p in reliable
+                ],
+                "confidence": 0.8,
+                "explanation": (
+                    "Reliability score derived from commitment, status-update, and "
+                    "performance facts accumulated across meetings in kgmemory."
+                ),
+            },
+            {
+                "key": "engineers_needing_attention_kgmemory",
+                "value": [p["name"] for p in at_risk],
+                "confidence": 0.75 if at_risk else 0.3,
+                "explanation": (
+                    "Engineers whose kgmemory reliability score is below 0.4 based on "
+                    "missed or flagged commitments."
+                ),
+            },
+        ]
 
     async def email_to_admins(self, session: AsyncSession, report: WeeklyReport) -> int:
         admins = (

@@ -15,6 +15,7 @@ class IntegrationProvider(str, enum.Enum):
     MICROSOFT_CALENDAR = "microsoft_calendar"
     SLACK = "slack"
     NOTION = "notion"
+    KGMEMORY = "kgmemory"
 
 
 class IntegrationState(str, enum.Enum):

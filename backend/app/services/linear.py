@@ -87,20 +87,27 @@ class LinearClient:
             "projects"
         ]["nodes"]
 
+    async def teams(self, token: str) -> list[dict]:
+        return (await self.graphql(token, "{ teams { nodes { id name key } } }"))[
+            "teams"
+        ]["nodes"]
+
     async def create_issue(
-        self, token: str, team_id: str, title: str, description: str | None
+        self,
+        token: str,
+        team_id: str,
+        title: str,
+        description: str | None,
+        assignee_id: str | None = None,
     ) -> dict:
+        issue_input = {"teamId": team_id, "title": title, "description": description}
+        if assignee_id:
+            issue_input["assigneeId"] = assignee_id
         return (
             await self.graphql(
                 token,
                 "mutation($input:IssueCreateInput!){ issueCreate(input:$input){ success issue { id identifier status { name } } } }",
-                {
-                    "input": {
-                        "teamId": team_id,
-                        "title": title,
-                        "description": description,
-                    }
-                },
+                {"input": issue_input},
             )
         )["issueCreate"]["issue"]
 

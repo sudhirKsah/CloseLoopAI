@@ -99,20 +99,18 @@ class JiraClient:
         project_key: str,
         summary: str,
         description: str | None,
+        assignee_account_id: str | None = None,
     ) -> dict:
+        fields = {
+            "project": {"key": project_key},
+            "summary": summary,
+            "description": description or "",
+            "issuetype": {"name": "Task"},
+        }
+        if assignee_account_id:
+            fields["assignee"] = {"accountId": assignee_account_id}
         return await self.request(
-            token,
-            cloud_id,
-            "POST",
-            "issue",
-            json={
-                "fields": {
-                    "project": {"key": project_key},
-                    "summary": summary,
-                    "description": description or "",
-                    "issuetype": {"name": "Task"},
-                }
-            },
+            token, cloud_id, "POST", "issue", json={"fields": fields}
         )
 
     async def update_issue(

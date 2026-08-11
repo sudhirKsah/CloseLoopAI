@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     linear_client_secret: str = ""
     github_client_id: str = ""
     github_client_secret: str = ""
+    github_webhook_secret: str = ""
     google_client_id: str = ""
     google_client_secret: str = ""
     microsoft_client_id: str = ""
@@ -43,7 +44,13 @@ class Settings(BaseSettings):
     notion_client_id: str = ""
     notion_client_secret: str = ""
     clerk_secret_key: str = ""
+    jwt_secret_key: str = "closeloop-dev-secret-change-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expiry_hours: int = 72
     monitoring_hour_utc: int = 3  # 08:30 IST
+    kgmemory_base_url: str = "http://localhost:8001/v1"
+    kgmemory_request_timeout: float = 20.0
+    frontend_url: str = "http://localhost:3000"
     # cors_origins: list[str] = [
     #     "http://localhost:3000",
     # ]

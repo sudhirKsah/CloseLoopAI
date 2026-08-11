@@ -6,7 +6,7 @@ from app.db.base import Base
 import app.models
 
 config = context.config
-if config.config_file_name:
+if config.config_file_name and config.get_section("formatters"):
     fileConfig(config.config_file_name)
 config.set_main_option("sqlalchemy.url", settings.database_url)
 target_metadata = Base.metadata
