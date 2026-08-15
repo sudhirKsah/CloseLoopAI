@@ -33,7 +33,16 @@ async def lifespan(app: FastAPI):
         import app.models  # noqa: F401
 
         await conn.run_sync(Base.metadata.create_all)
-    yield
+
+    # Start the PM scheduler — runs auto-onboard and auto-check-in
+    # periodically so the PM proactively reaches out to the team.
+    from .services.pm_scheduler import start_pm_scheduler, stop_pm_scheduler
+
+    await start_pm_scheduler()
+    try:
+        yield
+    finally:
+        await stop_pm_scheduler()
 
 
 app = FastAPI(title="CloseLoop API", version="0.1.0", lifespan=lifespan)
