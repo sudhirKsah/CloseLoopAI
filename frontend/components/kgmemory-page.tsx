@@ -1,25 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import {
   Activity,
-  AlertTriangle,
-  Bell,
   Brain,
   CheckCircle2,
-  ClipboardList,
-  DollarSign,
-  Flag,
-  Gauge,
-  GitBranch,
-  Lightbulb,
-  ListChecks,
+  Clock,
   MessageSquare,
   RefreshCw,
-  Search,
   Send,
-  Sparkles,
   Target,
   TrendingUp,
   Users,
@@ -33,36 +22,19 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import * as kg from "@/lib/kgmemory";
 
-type Tab =
-  | "ask"
-  | "memory"
-  | "people"
-  | "projects"
-  | "monitor"
-  | "actions"
-  | "planning"
-  | "sprints"
-  | "stakeholders"
-  | "team";
+type Tab = "chat" | "team" | "projects";
 
-const TABS: { id: Tab; label: string; icon: typeof Brain }[] = [
-  { id: "ask", label: "Ask the PM", icon: Brain },
-  { id: "memory", label: "Memory", icon: Search },
-  { id: "people", label: "People", icon: Users },
-  { id: "projects", label: "Projects", icon: Target },
-  { id: "monitor", label: "Monitor", icon: AlertTriangle },
-  { id: "actions", label: "Actions", icon: ListChecks },
-  { id: "planning", label: "Planning", icon: GitBranch },
-  { id: "sprints", label: "Sprints", icon: Flag },
-  { id: "stakeholders", label: "Stakeholders", icon: DollarSign },
-  { id: "team", label: "Team", icon: MessageSquare },
+const TABS: { id: Tab; label: string; icon: typeof Brain; desc: string }[] = [
+  { id: "chat", label: "Chat with PM", icon: MessageSquare, desc: "Ask your AI PM anything" },
+  { id: "team", label: "Team", icon: Users, desc: "Profiles, onboarding, check-ins" },
+  { id: "projects", label: "Projects", icon: Target, desc: "Tasks, assignments, progress" },
 ];
 
 export function KgMemoryPage() {
   const { workspaceId } = useWorkspace();
   const toast = useToast();
   const [connected, setConnected] = useState<boolean | null>(null);
-  const [tab, setTab] = useState<Tab>("ask");
+  const [tab, setTab] = useState<Tab>("chat");
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -93,21 +65,12 @@ export function KgMemoryPage() {
       <Layout>
         <Card className="border-amber-300/20 p-8">
           <div className="flex items-start gap-4">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-400/10 text-violet-300">
-              <Zap size={18} />
-            </span>
-            <div className="flex-1">
-              <p className="font-medium">Knowledge Graph Memory is not connected</p>
-              <p className="mt-2 text-sm text-zinc-500">
-                Connect it on the Integrations page to unlock the AI PM brain,
-                engineer reliability scoring, autonomous monitoring, and
-                cross-meeting memory.
+            <Brain className="mt-0.5 size-6 text-amber-300" />
+            <div>
+              <p className="text-sm font-medium">Memory not connected</p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Connect the Knowledge Graph Memory integration to unlock the AI PM.
               </p>
-              <Link href="/integrations" className="mt-4 inline-block">
-                <Button size="sm" variant="secondary">
-                  Go to Integrations
-                </Button>
-              </Link>
             </div>
           </div>
         </Card>
@@ -116,405 +79,191 @@ export function KgMemoryPage() {
   }
 
   return (
-    <Layout>
-      <div className="flex flex-wrap gap-1.5 border-b border-white/[.06] pb-3">
-        {TABS.map((t) => {
-          const Icon = t.icon;
-          return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={
-                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition " +
-                (tab === t.id
-                  ? "bg-white/[.09] text-white"
-                  : "text-zinc-500 hover:bg-white/[.045] hover:text-zinc-200")
-              }
-            >
-              <Icon size={13} />
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-      <div className="mt-6">
-        {tab === "ask" && <AskTab workspaceId={workspaceId} toast={toast} />}
-        {tab === "memory" && <MemoryTab workspaceId={workspaceId} toast={toast} />}
-        {tab === "people" && <PeopleTab workspaceId={workspaceId} toast={toast} />}
-        {tab === "projects" && <ProjectsTab workspaceId={workspaceId} toast={toast} />}
-        {tab === "monitor" && <MonitorTab workspaceId={workspaceId} toast={toast} />}
-        {tab === "actions" && <ActionsTab workspaceId={workspaceId} toast={toast} />}
-        {tab === "planning" && <PlanningTab workspaceId={workspaceId} toast={toast} />}
-        {tab === "sprints" && <SprintsTab workspaceId={workspaceId} toast={toast} />}
-        {tab === "stakeholders" && <StakeholdersTab workspaceId={workspaceId} toast={toast} />}
-        {tab === "team" && <TeamTab workspaceId={workspaceId} toast={toast} />}
-      </div>
+    <Layout activeTab={tab} onTabChange={setTab}>
+      {tab === "chat" && <ChatTab workspaceId={workspaceId} toast={toast} />}
+      {tab === "team" && <TeamTab workspaceId={workspaceId} toast={toast} />}
+      {tab === "projects" && <ProjectsTab workspaceId={workspaceId} toast={toast} />}
     </Layout>
   );
 }
 
-function Layout({ children }: { children: React.ReactNode }) {
+// ── Layout ────────────────────────────────────────────────────────────────
+
+function Layout({
+  children,
+  activeTab,
+  onTabChange,
+}: {
+  children: React.ReactNode;
+  activeTab: Tab;
+  onTabChange: (t: Tab) => void;
+}) {
   return (
     <main className="p-5 lg:p-8">
-      <p className="text-[11px] font-medium tracking-[.16em] text-violet-300">
-        KNOWLEDGE GRAPH MEMORY
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight md:text-3xl">
-        AI PM brain.
+      <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
+        AI Project Manager
       </h1>
-      <p className="mt-2 text-sm text-zinc-500">
-        Cross-meeting memory, reliability scoring, and autonomous monitoring.
+      <p className="mt-1 text-sm text-zinc-500">
+        Your AI PM talks to the team on Slack, tracks progress, and helps you
+        make decisions.
       </p>
-      <div className="mt-7">{children}</div>
+      <div className="mt-6 flex gap-1 rounded-xl border border-white/[.06] bg-white/[.02] p-1">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => onTabChange(t.id)}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+              activeTab === t.id
+                ? "bg-violet-500/20 text-violet-200"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <t.icon size={15} />
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-6">{children}</div>
     </main>
   );
 }
 
-// ── shared bits ───────────────────────────────────────────────────────────
+// ── Chat Tab ──────────────────────────────────────────────────────────────
 
-function useBusy() {
+type ChatMsg = { role: "user" | "pm"; text: string; actions?: { action: string; target: string; message: string; urgency: string }[] };
+
+function ChatTab({
+  workspaceId,
+  toast,
+}: {
+  workspaceId: string;
+  toast: (m: string, t?: "success" | "error" | "info") => void;
+}) {
+  const [messages, setMessages] = useState<ChatMsg[]>([
+    {
+      role: "pm",
+      text: "Hi! I'm your AI PM. I can tell you about your team, help you plan work, or check on progress. What do you want to know?",
+    },
+  ]);
+  const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  return { busy, run: async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const send = async () => {
+    const q = input.trim();
+    if (!q || busy) return;
+    setInput("");
+    setMessages((m) => [...m, { role: "user", text: q }]);
     setBusy(true);
     try {
-      return await fn();
+      const r = await kg.kgDecide(workspaceId, {
+        query: q,
+        audience: "founder_non_technical",
+      });
+      setMessages((m) => [
+        ...m,
+        {
+          role: "pm",
+          text: r.response_text || "I couldn't process that right now.",
+          actions: (r.suggested_actions as ChatMsg["actions"])?.filter(
+            (a) => a.action !== "none",
+          ),
+        },
+      ]);
+    } catch {
+      setMessages((m) => [
+        ...m,
+        { role: "pm", text: "Sorry, I had trouble processing that. Try again?" },
+      ]);
+      toast("Failed to get response", "error");
     } finally {
       setBusy(false);
     }
-  } };
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block text-xs text-zinc-400">
-      {label}
-      <div className="mt-1.5">{children}</div>
-    </label>
-  );
-}
-
-const inputClass =
-  "h-10 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 text-sm text-white outline-none transition focus:border-emerald-300/60";
-
-const textareaClass =
-  "w-full rounded-xl border border-white/10 bg-white/[.04] p-3 text-sm text-white outline-none transition focus:border-emerald-300/60";
-
-function JsonView({ data }: { data: unknown }) {
-  return (
-    <pre className="max-h-[420px] overflow-auto rounded-xl border border-white/[.06] bg-black/40 p-3 text-xs leading-relaxed text-zinc-300">
-      {JSON.stringify(data, null, 2)}
-    </pre>
-  );
-}
-
-function SectionTitle({
-  icon: Icon,
-  children,
-}: {
-  icon: typeof Brain;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
-      <Icon size={15} className="text-violet-300" />
-      {children}
-    </div>
-  );
-}
-
-// ── Ask the PM tab ────────────────────────────────────────────────────────
-
-function AskTab({
-  workspaceId,
-  toast,
-}: {
-  workspaceId: string;
-  toast: (m: string, t?: "success" | "error" | "info") => void;
-}) {
-  const [query, setQuery] = useState("");
-  const [audience, setAudience] = useState("founder_non_technical");
-  const [result, setResult] = useState<kg.KgDecision>();
-  const [digest, setDigest] = useState<Record<string, unknown>>();
-  const { busy, run } = useBusy();
-
-  const ask = async () => {
-    if (!query.trim()) return;
-    const r = await run(() =>
-      kg.kgDecide(workspaceId, { query, audience }),
-    );
-    if (r) {
-      setResult(r);
-      toast("Decision generated", "success");
-    } else {
-      toast("Failed to get decision", "error");
-    }
-  };
-
-  const getDigest = async () => {
-    const r = await run(() => kg.kgFounderDigest(workspaceId, audience));
-    if (r) {
-      setDigest(r);
-      toast("Founder digest generated", "success");
-    } else {
-      toast("Failed to generate digest", "error");
-    }
-  };
-
-  return (
-    <div className="grid gap-5 lg:grid-cols-2">
-      <Card className="p-5">
-        <SectionTitle icon={Brain}>Ask the AI PM</SectionTitle>
-        <p className="mt-1 text-xs text-zinc-500">
-          The PM reasons over cross-meeting memory and current project/person
-          state, then responds with concrete suggested actions.
-        </p>
-        <div className="mt-4 space-y-3">
-          <Field label="Question">
-            <textarea
-              className={textareaClass}
-              rows={3}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Is the API project on track? Should I be worried?"
-            />
-          </Field>
-          <Field label="Audience">
-            <select
-              className={inputClass}
-              value={audience}
-              onChange={(e) => setAudience(e.target.value)}
-            >
-              <option value="founder_non_technical">Founder (non-technical)</option>
-              <option value="founder_technical">Founder (technical)</option>
-              <option value="engineer">Engineer</option>
-              <option value="internal">Internal</option>
-            </select>
-          </Field>
-          <Button onClick={ask} disabled={busy || !query.trim()}>
-            {busy ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
-            Ask
-          </Button>
-        </div>
-      </Card>
-
-      <Card className="p-5">
-        <SectionTitle icon={Sparkles}>Founder digest</SectionTitle>
-        <p className="mt-1 text-xs text-zinc-500">
-          A ruthlessly filtered digest — only what you need to know, max 5
-          bullets, with a green/yellow/red urgency level.
-        </p>
-        <div className="mt-4">
-          <Button variant="secondary" onClick={getDigest} disabled={busy}>
-            {busy ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
-            Generate digest
-          </Button>
-        </div>
-        {digest && (
-          <div className="mt-4">
-            <JsonView data={digest} />
-          </div>
-        )}
-      </Card>
-
-      {result && (
-        <Card className="p-5 lg:col-span-2">
-          <div className="flex items-center justify-between">
-            <SectionTitle icon={Brain}>Decision</SectionTitle>
-            <div className="flex items-center gap-2">
-              <Badge
-                variant={
-                  result.risk_level === "high"
-                    ? "danger"
-                    : result.risk_level === "medium"
-                      ? "warning"
-                      : "success"
-                }
-              >
-                {result.risk_level} risk
-              </Badge>
-              <Badge variant="info">
-                <Gauge size={11} /> {Math.round(result.confidence * 100)}% confidence
-              </Badge>
-            </div>
-          </div>
-          <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-zinc-200">
-            {result.response_text}
-          </p>
-          {result.reasoning && (
-            <details className="mt-3 text-xs text-zinc-500">
-              <summary className="cursor-pointer select-none">Reasoning</summary>
-              <p className="mt-2 whitespace-pre-wrap">{result.reasoning}</p>
-            </details>
-          )}
-          {result.suggested_actions.length > 0 && (
-            <div className="mt-4">
-              <p className="text-xs uppercase tracking-wider text-zinc-500">
-                Suggested actions
-              </p>
-              <div className="mt-2 space-y-2">
-                {result.suggested_actions.map((a, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-3 rounded-xl border border-white/[.06] bg-white/[.02] p-3"
-                  >
-                    <Badge
-                      variant={
-                        String(a.urgency) === "high"
-                          ? "danger"
-                          : String(a.urgency) === "medium"
-                            ? "warning"
-                            : "default"
-                      }
-                    >
-                      {String(a.action)}
-                    </Badge>
-                    <div className="flex-1 text-sm text-zinc-300">
-                      <p className="font-medium text-zinc-200">
-                        {String(a.target)}
-                      </p>
-                      <p className="mt-0.5 text-zinc-400">{String(a.message)}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </Card>
-      )}
-    </div>
-  );
-}
-
-// ── Memory tab ────────────────────────────────────────────────────────────
-
-function MemoryTab({
-  workspaceId,
-  toast,
-}: {
-  workspaceId: string;
-  toast: (m: string, t?: "success" | "error" | "info") => void;
-}) {
-  const [query, setQuery] = useState("");
-  const [searchResult, setSearchResult] = useState<kg.KgSearchResponse>();
-  const [facts, setFacts] = useState<kg.KgFact[]>([]);
-  const [factFilter, setFactFilter] = useState("");
-  const { busy, run } = useBusy();
-
-  const search = async () => {
-    if (!query.trim()) return;
-    const r = await run(() => kg.kgSearch(workspaceId, { query }));
-    if (r) {
-      setSearchResult(r);
-      toast(`Found ${r.facts.length} facts`, "success");
-    } else {
-      toast("Search failed", "error");
-    }
-  };
-
-  const loadFacts = async () => {
-    const r = await run(() =>
-      kg.kgListFacts(workspaceId, factFilter ? { subject: factFilter } : { limit: 100 }),
-    );
-    if (r) setFacts(r);
   };
 
   useEffect(() => {
-    void loadFacts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages]);
 
   return (
-    <div className="grid gap-5 lg:grid-cols-2">
-      <Card className="p-5">
-        <SectionTitle icon={Search}>Context search</SectionTitle>
-        <p className="mt-1 text-xs text-zinc-500">
-          Hybrid retrieval: vector ANN + graph traversal + LLM rerank. Returns
-          a prompt-context string plus structured facts and current states.
-        </p>
-        <div className="mt-4 space-y-3">
-          <textarea
-            className={textareaClass}
-            rows={2}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="What has Dave committed to recently?"
-          />
-          <Button onClick={search} disabled={busy || !query.trim()}>
-            {busy ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
-            Search
-          </Button>
-        </div>
-        {searchResult && (
-          <div className="mt-4 space-y-3">
-            {searchResult.project_states.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {searchResult.project_states.map((p, i) => (
-                  <Badge key={i} variant="info">
-                    {String(p.project)}: {String(p.health)}
-                  </Badge>
-                ))}
-              </div>
-            )}
-            {searchResult.prompt_context && (
-              <pre className="max-h-[300px] overflow-auto rounded-xl border border-white/[.06] bg-black/40 p-3 text-xs text-zinc-300">
-                {searchResult.prompt_context}
-              </pre>
-            )}
+    <div className="mx-auto max-w-3xl">
+      <div
+        ref={scrollRef}
+        className="h-[60vh] space-y-4 overflow-y-auto rounded-2xl border border-white/[.06] bg-white/[.01] p-4"
+      >
+        {messages.map((m, i) => (
+          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div
+              className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
+                m.role === "user"
+                  ? "bg-violet-500/20 text-violet-100"
+                  : "bg-white/[.04] text-zinc-200"
+              }`}
+            >
+              {m.text}
+              {m.actions && m.actions.length > 0 && (
+                <div className="mt-2 space-y-1 border-t border-white/10 pt-2">
+                  <p className="text-xs text-zinc-500">Suggested actions:</p>
+                  {m.actions.map((a, j) => (
+                    <div key={j} className="text-xs text-zinc-400">
+                      <span className={`font-medium ${
+                        a.urgency === "high" ? "text-red-400" :
+                        a.urgency === "medium" ? "text-amber-400" : "text-emerald-400"
+                      }`}>
+                        {a.urgency.toUpperCase()}
+                      </span>{" "}
+                      — {a.action}: {a.message}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {busy && (
+          <div className="flex justify-start">
+            <div className="rounded-2xl bg-white/[.04] px-4 py-2.5 text-sm text-zinc-400">
+              <RefreshCw size={14} className="inline animate-spin" /> Thinking...
+            </div>
           </div>
         )}
-      </Card>
-
-      <Card className="p-5">
-        <SectionTitle icon={ClipboardList}>Facts in the graph</SectionTitle>
-        <div className="mt-4 flex gap-2">
-          <input
-            className={inputClass}
-            placeholder="Filter by subject..."
-            value={factFilter}
-            onChange={(e) => setFactFilter(e.target.value)}
-          />
-          <Button variant="secondary" onClick={loadFacts} disabled={busy}>
-            <RefreshCw size={13} className={busy ? "animate-spin" : ""} />
-          </Button>
-        </div>
-        <div className="mt-4 max-h-[420px] space-y-2 overflow-y-auto">
-          {facts.length === 0 ? (
-            <p className="py-8 text-center text-xs text-zinc-600">No facts yet.</p>
-          ) : (
-            facts.map((f) => (
-              <div
-                key={f.fact_id}
-                className="rounded-xl border border-white/[.06] bg-white/[.02] p-3"
-              >
-                <div className="flex items-center gap-2">
-                  <Badge variant="default">{f.fact_kind}</Badge>
-                  <span className="text-xs text-zinc-500">{f.subject}</span>
-                </div>
-                <p className="mt-1.5 text-sm text-zinc-200">
-                  <span className="text-zinc-500">{f.predicate}</span>{" "}
-                  {f.value}
-                </p>
-                {f.project && (
-                  <p className="mt-1 text-xs text-zinc-600">project: {f.project}</p>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      </Card>
+      </div>
+      <div className="mt-3 flex gap-2">
+        <input
+          className="flex-1 rounded-xl border border-white/10 bg-white/[.04] px-4 py-2.5 text-sm text-white outline-none focus:border-violet-400/60"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && send()}
+          placeholder="Ask about your team, projects, or what to do next..."
+          disabled={busy}
+        />
+        <Button onClick={send} disabled={busy || !input.trim()}>
+          <Send size={15} />
+        </Button>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {[
+          "How is my team doing?",
+          "Who is available for new work?",
+          "What should I be worried about?",
+          "Split work for the team",
+        ].map((s) => (
+          <button
+            key={s}
+            onClick={() => !busy && setInput(s)}
+            className="rounded-full border border-white/[.08] bg-white/[.02] px-3 py-1 text-xs text-zinc-400 transition hover:bg-white/[.05] hover:text-zinc-200"
+          >
+            {s}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
 
-// ── People tab ────────────────────────────────────────────────────────────
+// ── Team Tab ──────────────────────────────────────────────────────────────
 
-function PeopleTab({
+function TeamTab({
   workspaceId,
   toast,
 }: {
@@ -525,15 +274,14 @@ function PeopleTab({
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<kg.KgPerson>();
   const [selectedStatus, setSelectedStatus] = useState<kg.KgOnboardingStatus>();
-  const [contributions, setContributions] = useState<Record<string, unknown>>();
-  const { busy, run } = useBusy();
+  const [busy, setBusy] = useState(false);
 
   const load = async () => {
     setLoading(true);
     try {
       setPeople(await kg.kgListPeople(workspaceId));
     } catch {
-      toast("Failed to load people", "error");
+      toast("Failed to load team", "error");
     } finally {
       setLoading(false);
     }
@@ -541,208 +289,177 @@ function PeopleTab({
 
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const open = async (name: string) => {
-    const result = await run(async () =>
-      Promise.all([
+    setBusy(true);
+    try {
+      const [p, s] = await Promise.all([
         kg.kgGetPerson(workspaceId, name),
-        kg.kgPersonContributions(workspaceId, name),
         kg.kgOnboardingStatus(workspaceId, name).catch(() => null),
-      ]),
-    );
-    if (result) {
-      const [p, c, s] = result;
+      ]);
       setSelected(p);
-      setContributions(c);
       setSelectedStatus(s ?? undefined);
+    } catch {
+      toast("Failed to load profile", "error");
+    } finally {
+      setBusy(false);
     }
   };
 
   const autoOnboard = async () => {
-    const result = await run(() => kg.kgAutoOnboard(workspaceId));
-    if (result) {
-      toast(`Onboarded ${result.count} member(s) on Slack`, "success");
+    setBusy(true);
+    try {
+      const r = await kg.kgAutoOnboard(workspaceId);
+      toast(`Onboarded ${r.count} member(s) on Slack`, "success");
       void load();
+    } catch {
+      toast("Auto-onboard failed", "error");
+    } finally {
+      setBusy(false);
     }
   };
 
   const autoCheckIn = async () => {
-    const result = await run(() => kg.kgAutoCheckIn(workspaceId));
-    if (result) {
-      toast(`Sent check-ins to ${result.count} member(s) on Slack`, "success");
+    setBusy(true);
+    try {
+      const r = await kg.kgAutoCheckIn(workspaceId);
+      toast(`Sent check-ins to ${r.count} member(s)`, "success");
+    } catch {
+      toast("Check-in failed", "error");
+    } finally {
+      setBusy(false);
     }
   };
 
   const startOnboarding = async (name: string) => {
-    const result = await run(() => kg.kgStartOnboarding(workspaceId, name));
-    if (result) {
+    setBusy(true);
+    try {
+      await kg.kgStartOnboarding(workspaceId, name);
       toast(`Started onboarding for ${name}`, "success");
       void open(name);
+    } catch {
+      toast("Failed to start onboarding", "error");
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
     <div className="space-y-4">
-      {/* PM action bar */}
-      <Card className="flex items-center justify-between p-4">
-        <div>
-          <p className="text-sm font-medium">Automated PM</p>
-          <p className="text-xs text-zinc-500">
-            Let the AI PM onboard and check in with your team on Slack
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button size="sm" onClick={autoOnboard} disabled={busy}>
-            <Send size={13} /> Auto-onboard all
-          </Button>
-          <Button size="sm" variant="secondary" onClick={autoCheckIn} disabled={busy}>
-            <MessageSquare size={13} /> Auto check-in
-          </Button>
-        </div>
-      </Card>
+      {/* PM Actions */}
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={autoOnboard} disabled={busy} size="sm">
+          <Send size={13} /> Onboard team on Slack
+        </Button>
+        <Button onClick={autoCheckIn} disabled={busy} size="sm" variant="secondary">
+          <MessageSquare size={13} /> Check in on Slack
+        </Button>
+        <Button onClick={load} disabled={loading} size="sm" variant="ghost">
+          <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
+        </Button>
+      </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
-        <Card className="p-5 lg:col-span-1">
-          <div className="flex items-center justify-between">
-            <SectionTitle icon={Users}>Team</SectionTitle>
-            <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
-              <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-            </Button>
-          </div>
-          <div className="mt-4 space-y-2">
-            {loading ? (
-              <Skeleton className="h-16 rounded-xl" />
-            ) : people.length === 0 ? (
-              <p className="py-8 text-center text-xs text-zinc-600">
-                No people in memory yet. Run auto-onboard to get started.
+        {/* Team list */}
+        <div className="space-y-2 lg:col-span-1">
+          {loading ? (
+            <Skeleton className="h-16 rounded-xl" />
+          ) : people.length === 0 ? (
+            <Card className="p-6 text-center">
+              <p className="text-sm text-zinc-500">No team members yet.</p>
+              <p className="mt-1 text-xs text-zinc-600">
+                Click "Onboard team" to invite them on Slack.
               </p>
-            ) : (
-              people.map((p) => (
-                <button
-                  key={p.name}
-                  onClick={() => open(p.name)}
-                  className="w-full rounded-xl border border-white/[.06] bg-white/[.02] p-3 text-left transition hover:bg-white/[.05]"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium capitalize text-zinc-200">
-                      {p.name}
-                    </span>
-                    <ReliabilityBadge score={p.reliability_score} />
-                  </div>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    {p.title ?? p.role} · {p.completed_count} done ·{" "}
-                    {p.missed_count} missed
-                  </p>
-                </button>
-              ))
-            )}
-          </div>
-        </Card>
+            </Card>
+          ) : (
+            people.map((p) => (
+              <button
+                key={p.name}
+                onClick={() => open(p.name)}
+                className="w-full rounded-xl border border-white/[.06] bg-white/[.02] p-3 text-left transition hover:bg-white/[.05]"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium capitalize text-zinc-200">
+                    {p.name}
+                  </span>
+                  <ReliabilityBadge score={p.reliability_score} />
+                </div>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {p.title ?? p.role} · {p.completed_count} done · {p.missed_count} missed
+                </p>
+              </button>
+            ))
+          )}
+        </div>
 
+        {/* Profile detail */}
         <Card className="p-5 lg:col-span-2">
           {!selected ? (
             <p className="py-16 text-center text-sm text-zinc-600">
-              Select a person to see their full profile.
+              Select a team member to see their profile.
             </p>
           ) : (
             <div>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-lg font-semibold capitalize">{selected.name}</p>
-                  <p className="text-xs text-zinc-500">
-                    {selected.title ?? selected.role}
-                  </p>
+                  <p className="text-xs text-zinc-500">{selected.title ?? selected.role}</p>
                 </div>
                 <ReliabilityBadge
-                  score={
-                    (selected.reliability?.score as number | undefined) ?? 0
-                  }
+                  score={(selected.reliability?.score as number | undefined) ?? 0}
                 />
               </div>
 
               {/* Onboarding status */}
               {selectedStatus && (
-                <div className="mt-4 rounded-xl border border-white/[.06] bg-white/[.02] p-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs uppercase tracking-wider text-zinc-500">
-                      Onboarding
-                    </p>
-                    {selectedStatus.completed ? (
-                      <Badge variant="success">
-                        <CheckCircle2 size={11} /> Complete
-                      </Badge>
-                    ) : selectedStatus.started ? (
-                      <Badge variant="warning">
-                        In progress · {selectedStatus.step}
-                      </Badge>
-                    ) : (
-                      <Badge variant="default">Not started</Badge>
-                    )}
-                  </div>
-                  {!selectedStatus.completed && (
-                    <div className="mt-2 flex items-center gap-2">
-                      <p className="text-xs text-zinc-500">
-                        {selectedStatus.fact_count} facts learned
-                      </p>
-                      {!selectedStatus.started && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => startOnboarding(selected.name)}
-                          disabled={busy}
-                        >
-                          Start onboarding
-                        </Button>
-                      )}
-                    </div>
+                <div className="mt-3 flex items-center gap-2">
+                  {selectedStatus.completed ? (
+                    <Badge variant="success">
+                      <CheckCircle2 size={11} /> Onboarded
+                    </Badge>
+                  ) : selectedStatus.started ? (
+                    <Badge variant="warning">
+                      Onboarding: {selectedStatus.step}
+                    </Badge>
+                  ) : (
+                    <>
+                      <Badge variant="default">Not onboarded</Badge>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => startOnboarding(selected.name)}
+                        disabled={busy}
+                      >
+                        Start
+                      </Button>
+                    </>
                   )}
                 </div>
               )}
 
-              {/* Rich profile — grouped by fact type */}
+              {/* Rich profile */}
               {selected.facts && selected.facts.length > 0 ? (
                 <ProfileFacts facts={selected.facts} />
               ) : (
                 <p className="mt-6 py-8 text-center text-xs text-zinc-600">
-                  No profile data yet. The PM will build this during onboarding.
+                  No profile data yet. The PM learns this during onboarding.
                 </p>
               )}
 
-              {/* Structured fields */}
+              {/* Structured info */}
               {(selected.availability_hours_per_week || selected.timezone) && (
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   {selected.availability_hours_per_week && (
-                    <div className="rounded-lg border border-white/[.04] bg-white/[.01] p-2.5">
-                      <p className="text-xs uppercase tracking-wider text-zinc-500">
-                        Availability
-                      </p>
-                      <p className="mt-1 text-sm">
-                        {selected.availability_hours_per_week} hrs/week
-                      </p>
-                    </div>
+                    <InfoBox icon={Clock} label="Available">
+                      {selected.availability_hours_per_week} hrs/week
+                    </InfoBox>
                   )}
                   {selected.timezone && (
-                    <div className="rounded-lg border border-white/[.04] bg-white/[.01] p-2.5">
-                      <p className="text-xs uppercase tracking-wider text-zinc-500">
-                        Timezone
-                      </p>
-                      <p className="mt-1 text-sm">{selected.timezone}</p>
-                    </div>
+                    <InfoBox icon={Activity} label="Timezone">
+                      {selected.timezone}
+                    </InfoBox>
                   )}
-                </div>
-              )}
-
-              {/* Contributions */}
-              {contributions && Object.keys(contributions).length > 0 && (
-                <div className="mt-4">
-                  <p className="text-xs uppercase tracking-wider text-zinc-500">
-                    Work & Contributions
-                  </p>
-                  <div className="mt-2">
-                    <JsonView data={contributions} />
-                  </div>
                 </div>
               )}
             </div>
@@ -762,14 +479,14 @@ function ProfileFacts({ facts }: { facts: Record<string, unknown>[] }) {
   };
 
   const groups: Record<string, Group> = {
-    identity: { label: "Role & Identity", icon: Users, color: "text-emerald-400", items: [] },
+    identity: { label: "Role", icon: Users, color: "text-emerald-400", items: [] },
     experience: { label: "Experience", icon: TrendingUp, color: "text-cyan-400", items: [] },
     skill: { label: "Skills & Tech", icon: Zap, color: "text-blue-400", items: [] },
     project: { label: "Projects", icon: Target, color: "text-orange-400", items: [] },
-    availability: { label: "Availability", icon: Activity, color: "text-amber-400", items: [] },
-    preference: { label: "Interests & Preferences", icon: Lightbulb, color: "text-purple-400", items: [] },
-    work_style: { label: "Work Style & Communication", icon: MessageSquare, color: "text-pink-400", items: [] },
-    fact: { label: "Other Notes", icon: Brain, color: "text-zinc-400", items: [] },
+    availability: { label: "Availability", icon: Clock, color: "text-amber-400", items: [] },
+    preference: { label: "Interests", icon: Brain, color: "text-purple-400", items: [] },
+    work_style: { label: "Work Style", icon: MessageSquare, color: "text-pink-400", items: [] },
+    fact: { label: "Other", icon: Activity, color: "text-zinc-400", items: [] },
   };
 
   const seen = new Set<string>();
@@ -788,7 +505,6 @@ function ProfileFacts({ facts }: { facts: Record<string, unknown>[] }) {
   }
 
   const ordered = Object.values(groups).filter((g) => g.items.length > 0);
-
   if (ordered.length === 0) return null;
 
   return (
@@ -797,33 +513,29 @@ function ProfileFacts({ facts }: { facts: Record<string, unknown>[] }) {
         <div key={g.label}>
           <div className="flex items-center gap-1.5">
             <g.icon size={12} className={g.color} />
-            <p className="text-xs uppercase tracking-wider text-zinc-500">
-              {g.label}
-            </p>
+            <p className="text-xs uppercase tracking-wider text-zinc-500">{g.label}</p>
           </div>
-          <div className="mt-2 space-y-1.5">
+          <div className="mt-2">
             {g.label === "Skills & Tech" ? (
               <div className="flex flex-wrap gap-1.5">
                 {g.items.map((item, i) => (
-                  <Badge key={i} variant="default">
-                    {item.value}
-                  </Badge>
+                  <Badge key={i} variant="default">{item.value}</Badge>
                 ))}
               </div>
             ) : (
-              g.items.map((item, i) => (
-                <div
-                  key={i}
-                  className="rounded-lg border border-white/[.04] bg-white/[.01] px-3 py-2"
-                >
-                  <span className={`text-xs font-medium ${g.color}`}>
-                    {item.predicate}
-                  </span>
-                  <span className="ml-1.5 text-sm text-zinc-200">
-                    {item.value}
-                  </span>
-                </div>
-              ))
+              <div className="space-y-1.5">
+                {g.items.map((item, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg border border-white/[.04] bg-white/[.01] px-3 py-2"
+                  >
+                    <span className={`text-xs font-medium ${g.color}`}>
+                      {item.predicate}
+                    </span>
+                    <span className="ml-1.5 text-sm text-zinc-200">{item.value}</span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -836,12 +548,32 @@ function ReliabilityBadge({ score }: { score: number }) {
   const variant = score >= 0.7 ? "success" : score >= 0.4 ? "warning" : "danger";
   return (
     <Badge variant={variant}>
-      <Gauge size={11} /> {Math.round(score * 100)}%
+      {Math.round(score * 100)}%
     </Badge>
   );
 }
 
-// ── Projects tab ──────────────────────────────────────────────────────────
+function InfoBox({
+  icon: Icon,
+  label,
+  children,
+}: {
+  icon: typeof Clock;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-white/[.04] bg-white/[.01] p-2.5">
+      <div className="flex items-center gap-1.5">
+        <Icon size={11} className="text-zinc-500" />
+        <p className="text-xs uppercase tracking-wider text-zinc-500">{label}</p>
+      </div>
+      <p className="mt-1 text-sm">{children}</p>
+    </div>
+  );
+}
+
+// ── Projects Tab ──────────────────────────────────────────────────────────
 
 function ProjectsTab({
   workspaceId,
@@ -853,7 +585,7 @@ function ProjectsTab({
   const [projects, setProjects] = useState<kg.KgProject[]>([]);
   const [tasks, setTasks] = useState<kg.KgTask[]>([]);
   const [loading, setLoading] = useState(true);
-  const { busy, run } = useBusy();
+  const [busy, setBusy] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -873,721 +605,98 @@ function ProjectsTab({
 
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const autoAssign = async (taskId: string) => {
-    const r = await run(() => kg.kgAutoAssignTask(workspaceId, taskId));
-    if (r) {
-      toast(`Assigned to ${r.assignee ?? "n/a"}`, "success");
+    setBusy(true);
+    try {
+      await kg.kgAutoAssignTask(workspaceId, taskId);
+      toast("Task auto-assigned", "success");
       void load();
-    } else {
+    } catch {
       toast("Auto-assign failed", "error");
+    } finally {
+      setBusy(false);
     }
   };
 
-  return (
-    <div className="grid gap-5 lg:grid-cols-2">
-      <Card className="p-5">
-        <div className="flex items-center justify-between">
-          <SectionTitle icon={Target}>Projects</SectionTitle>
-          <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
-            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-          </Button>
-        </div>
-        <div className="mt-4 space-y-2">
-          {loading ? (
-            <Skeleton className="h-20 rounded-xl" />
-          ) : projects.length === 0 ? (
-            <p className="py-8 text-center text-xs text-zinc-600">
-              No projects in memory yet.
-            </p>
-          ) : (
-            projects.map((p) => (
-              <div
-                key={p.name}
-                className="rounded-xl border border-white/[.06] bg-white/[.02] p-3"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{p.name}</span>
-                  <Badge variant="default">{p.status}</Badge>
-                </div>
-                <p className="mt-1 text-xs text-zinc-500">
-                  {p.open_task_count} open / {p.task_count} total ·{" "}
-                  {p.member_count} members
-                </p>
-              </div>
-            ))
-          )}
-        </div>
-      </Card>
+  if (loading) {
+    return <Skeleton className="h-32 rounded-xl" />;
+  }
 
-      <Card className="p-5">
-        <SectionTitle icon={ListChecks}>Tasks</SectionTitle>
-        <div className="mt-4 space-y-2">
-          {tasks.length === 0 ? (
-            <p className="py-8 text-center text-xs text-zinc-600">
-              No tasks in memory yet.
-            </p>
-          ) : (
-            tasks.map((t) => (
-              <div
-                key={t.task_id}
-                className="flex items-start justify-between gap-3 rounded-xl border border-white/[.06] bg-white/[.02] p-3"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
-                    {t.title ?? t.task_id}
-                  </p>
-                  <p className="mt-0.5 text-xs text-zinc-500">
-                    {t.project} · {t.status}
-                    {t.assignee ? ` · ${t.assignee}` : " · unassigned"}
-                  </p>
-                  {t.required_skills.length > 0 && (
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {t.required_skills.map((s) => (
-                        <Badge key={s} variant="default">
-                          {s}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {!t.assignee && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={busy}
-                    onClick={() => autoAssign(t.task_id)}
-                  >
-                    Auto-assign
-                  </Button>
+  if (projects.length === 0) {
+    return (
+      <Card className="p-8 text-center">
+        <Target className="mx-auto size-8 text-zinc-600" />
+        <p className="mt-3 text-sm text-zinc-500">No projects yet.</p>
+        <p className="mt-1 text-xs text-zinc-600">
+          Ask the PM in the Chat tab to help plan and split work.
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {projects.map((p) => {
+        const projectTasks = tasks.filter((t) => t.project === p.name);
+        return (
+          <Card key={p.name} className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold">{p.name}</p>
+                {p.description && (
+                  <p className="mt-0.5 text-xs text-zinc-500">{p.description}</p>
                 )}
               </div>
-            ))
-          )}
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// ── Monitor tab ───────────────────────────────────────────────────────────
-
-function MonitorTab({
-  workspaceId,
-  toast,
-}: {
-  workspaceId: string;
-  toast: (m: string, t?: "success" | "error" | "info") => void;
-}) {
-  const [alerts, setAlerts] = useState<kg.KgAlert[]>([]);
-  const [filter, setFilter] = useState("open");
-  const [loading, setLoading] = useState(true);
-  const [scan, setScan] = useState<Record<string, unknown>>();
-  const { busy, run } = useBusy();
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      setAlerts(await kg.kgListAlerts(workspaceId, filter));
-    } catch {
-      toast("Failed to load alerts", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter]);
-
-  const doScan = async () => {
-    const r = await run(() => kg.kgMonitorScan(workspaceId));
-    if (r) {
-      setScan(r);
-      toast("Scan complete", "success");
-      void load();
-    } else {
-      toast("Scan failed", "error");
-    }
-  };
-
-  const ack = async (id: string) => {
-    const r = await run(() => kg.kgAckAlert(workspaceId, id));
-    if (r) {
-      toast("Alert acknowledged", "success");
-      void load();
-    }
-  };
-
-  return (
-    <div className="space-y-5">
-      <Card className="p-5">
-        <div className="flex items-center justify-between">
-          <SectionTitle icon={Activity}>Autonomous monitor</SectionTitle>
-          <Button size="sm" variant="secondary" onClick={doScan} disabled={busy}>
-            {busy ? <RefreshCw size={13} className="animate-spin" /> : <Activity size={13} />}
-            Run scan
-          </Button>
-        </div>
-        {scan && (
-          <div className="mt-3">
-            <JsonView data={scan} />
-          </div>
-        )}
-      </Card>
-
-      <Card className="p-5">
-        <div className="flex items-center justify-between">
-          <SectionTitle icon={AlertTriangle}>Alerts</SectionTitle>
-          <div className="flex gap-1">
-            {["open", "acknowledged", "all"].map((s) => (
-              <button
-                key={s}
-                onClick={() => setFilter(s)}
-                className={
-                  "rounded-lg px-2.5 py-1 text-xs transition " +
-                  (filter === s
-                    ? "bg-white/[.09] text-white"
-                    : "text-zinc-500 hover:text-zinc-200")
-                }
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="mt-4 space-y-2">
-          {loading ? (
-            <Skeleton className="h-16 rounded-xl" />
-          ) : alerts.length === 0 ? (
-            <p className="py-8 text-center text-xs text-zinc-600">
-              No {filter} alerts.
-            </p>
-          ) : (
-            alerts.map((a) => (
-              <div
-                key={a.alert_id}
-                className="flex items-start gap-3 rounded-xl border border-white/[.06] bg-white/[.02] p-3"
-              >
-                <Badge
-                  variant={
-                    a.severity === "high"
-                      ? "danger"
-                      : a.severity === "medium"
-                        ? "warning"
-                        : "default"
-                  }
-                >
-                  {a.alert_type}
-                </Badge>
-                <div className="flex-1">
-                  <p className="text-sm text-zinc-200">{a.message}</p>
-                  <p className="mt-1 text-xs text-zinc-600">
-                    {a.person ?? a.subject} · {a.project ?? "—"} ·{" "}
-                    {new Date(a.created_at).toLocaleString()}
-                  </p>
-                </div>
-                {a.status === "open" && (
-                  <Button size="sm" variant="ghost" onClick={() => ack(a.alert_id)}>
-                    <CheckCircle2 size={13} /> Ack
-                  </Button>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// ── Actions tab ───────────────────────────────────────────────────────────
-
-function ActionsTab({
-  workspaceId,
-  toast,
-}: {
-  workspaceId: string;
-  toast: (m: string, t?: "success" | "error" | "info") => void;
-}) {
-  const [actions, setActions] = useState<kg.KgAction[]>([]);
-  const [filter, setFilter] = useState("pending");
-  const [loading, setLoading] = useState(true);
-  const { busy, run } = useBusy();
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      setActions(await kg.kgListActions(workspaceId, filter));
-    } catch {
-      toast("Failed to load actions", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter]);
-
-  const complete = async (id: string) => {
-    const r = await run(() => kg.kgCompleteAction(workspaceId, id));
-    if (r) {
-      toast("Action completed", "success");
-      void load();
-    }
-  };
-
-  return (
-    <Card className="p-5">
-      <div className="flex items-center justify-between">
-        <SectionTitle icon={ListChecks}>Suggested actions</SectionTitle>
-        <div className="flex gap-1">
-          {["pending", "completed", "all"].map((s) => (
-            <button
-              key={s}
-              onClick={() => setFilter(s)}
-              className={
-                "rounded-lg px-2.5 py-1 text-xs transition " +
-                (filter === s
-                  ? "bg-white/[.09] text-white"
-                  : "text-zinc-500 hover:text-zinc-200")
-              }
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="mt-4 space-y-2">
-        {loading ? (
-          <Skeleton className="h-16 rounded-xl" />
-        ) : actions.length === 0 ? (
-          <p className="py-8 text-center text-xs text-zinc-600">
-            No {filter} actions.
-          </p>
-        ) : (
-          actions.map((a) => (
-            <div
-              key={a.action_id}
-              className="flex items-start gap-3 rounded-xl border border-white/[.06] bg-white/[.02] p-3"
-            >
-              <Badge
-                variant={
-                  a.urgency === "high"
-                    ? "danger"
-                    : a.urgency === "medium"
-                      ? "warning"
-                      : "default"
-                }
-              >
-                {a.action}
+              <Badge variant={p.status === "active" ? "success" : "default"}>
+                {p.status}
               </Badge>
-              <div className="flex-1">
-                <p className="text-sm font-medium text-zinc-200">{a.target}</p>
-                <p className="mt-0.5 text-sm text-zinc-400">{a.message}</p>
-              </div>
-              {a.status === "pending" && (
-                <Button size="sm" variant="ghost" onClick={() => complete(a.action_id)} disabled={busy}>
-                  <CheckCircle2 size={13} /> Done
-                </Button>
-              )}
             </div>
-          ))
-        )}
-      </div>
-    </Card>
-  );
-}
-
-// ── Planning tab ──────────────────────────────────────────────────────────
-
-function PlanningTab({
-  workspaceId,
-  toast,
-}: {
-  workspaceId: string;
-  toast: (m: string, t?: "success" | "error" | "info") => void;
-}) {
-  const [project, setProject] = useState("");
-  const [prioritize, setPrioritize] = useState<Record<string, unknown>>();
-  const [deps, setDeps] = useState<Record<string, unknown>>();
-  const [scope, setScope] = useState<Record<string, unknown>>();
-  const [estimation, setEstimation] = useState<Record<string, unknown>>();
-  const { busy, run } = useBusy();
-
-  const call = async (
-    fn: () => Promise<Record<string, unknown>>,
-    label: string,
-  ) => {
-    const r = await run(fn);
-    if (r) toast(`${label} ready`, "success");
-    else toast(`${label} failed`, "error");
-    return r;
-  };
-
-  return (
-    <div className="grid gap-5 lg:grid-cols-2">
-      <Card className="p-5">
-        <SectionTitle icon={ListChecks}>Prioritize open tasks</SectionTitle>
-        <div className="mt-3 flex gap-2">
-          <input
-            className={inputClass}
-            placeholder="Project (optional)"
-            value={project}
-            onChange={(e) => setProject(e.target.value)}
-          />
-          <Button
-            variant="secondary"
-            disabled={busy}
-            onClick={async () => setPrioritize(await call(() => kg.kgPrioritize(workspaceId, project || undefined), "Prioritize"))}
-          >
-            Run
-          </Button>
-        </div>
-        {prioritize && (
-          <div className="mt-3">
-            <JsonView data={prioritize} />
-          </div>
-        )}
-      </Card>
-
-      <Card className="p-5">
-        <SectionTitle icon={GitBranch}>Dependency analysis</SectionTitle>
-        <div className="mt-3 flex gap-2">
-          <input
-            className={inputClass}
-            placeholder="Project (optional)"
-            value={project}
-            onChange={(e) => setProject(e.target.value)}
-          />
-          <Button
-            variant="secondary"
-            disabled={busy}
-            onClick={async () => setDeps(await call(() => kg.kgDependencies(workspaceId, project || undefined), "Dependencies"))}
-          >
-            Run
-          </Button>
-        </div>
-        {deps && (
-          <div className="mt-3">
-            <JsonView data={deps} />
-          </div>
-        )}
-      </Card>
-
-      <Card className="p-5">
-        <SectionTitle icon={TrendingUp}>Estimation accuracy</SectionTitle>
-        <Button
-          variant="secondary"
-          className="mt-3"
-          disabled={busy}
-          onClick={async () => setEstimation(await call(() => kg.kgEstimationAccuracy(workspaceId), "Estimation"))}
-        >
-          Run
-        </Button>
-        {estimation && (
-          <div className="mt-3">
-            <JsonView data={estimation} />
-          </div>
-        )}
-      </Card>
-
-      <Card className="p-5">
-        <SectionTitle icon={AlertTriangle}>Scope creep</SectionTitle>
-        <div className="mt-3 flex gap-2">
-          <input
-            className={inputClass}
-            placeholder="Project name"
-            value={project}
-            onChange={(e) => setProject(e.target.value)}
-          />
-          <Button
-            variant="secondary"
-            disabled={busy || !project}
-            onClick={async () => setScope(await call(() => kg.kgScopeCreep(workspaceId, project), "Scope creep"))}
-          >
-            Run
-          </Button>
-        </div>
-        {scope && (
-          <div className="mt-3">
-            <JsonView data={scope} />
-          </div>
-        )}
-      </Card>
-    </div>
-  );
-}
-
-// ── Sprints tab ───────────────────────────────────────────────────────────
-
-function SprintsTab({
-  workspaceId,
-  toast,
-}: {
-  workspaceId: string;
-  toast: (m: string, t?: "success" | "error" | "info") => void;
-}) {
-  const [project, setProject] = useState("");
-  const [sprints, setSprints] = useState<Record<string, unknown>[]>([]);
-  const [roadmap, setRoadmap] = useState<Record<string, unknown>>();
-  const [capacity, setCapacity] = useState<Record<string, unknown>>();
-  const { busy, run } = useBusy();
-
-  return (
-    <div className="grid gap-5 lg:grid-cols-2">
-      <Card className="p-5">
-        <SectionTitle icon={Flag}>Sprints</SectionTitle>
-        <div className="mt-3 flex gap-2">
-          <input
-            className={inputClass}
-            placeholder="Project (optional)"
-            value={project}
-            onChange={(e) => setProject(e.target.value)}
-          />
-          <Button
-            variant="secondary"
-            disabled={busy}
-            onClick={async () => {
-              const r = await run(() => kg.kgListSprints(workspaceId, project || undefined));
-              if (r) setSprints(r);
-            }}
-          >
-            Load
-          </Button>
-        </div>
-        <div className="mt-3 space-y-2">
-          {sprints.length === 0 ? (
-            <p className="py-6 text-center text-xs text-zinc-600">No sprints.</p>
-          ) : (
-            sprints.map((s, i) => (
-              <div
-                key={i}
-                className="rounded-xl border border-white/[.06] bg-white/[.02] p-3 text-xs"
-              >
-                <JsonView data={s} />
+            <div className="mt-3 flex gap-4 text-xs text-zinc-500">
+              <span>{p.task_count} tasks</span>
+              <span>{p.open_task_count} open</span>
+              <span>{p.member_count} members</span>
+              {p.deadline && <span>Due: {p.deadline}</span>}
+            </div>
+            {projectTasks.length > 0 && (
+              <div className="mt-4 space-y-2">
+                {projectTasks.map((t) => (
+                  <div
+                    key={t.task_id}
+                    className="flex items-center justify-between rounded-lg border border-white/[.04] bg-white/[.01] px-3 py-2"
+                  >
+                    <div>
+                      <p className="text-sm text-zinc-200">
+                        {t.title || t.task_id}
+                      </p>
+                      <p className="text-xs text-zinc-500">
+                        {t.assignee ? `Assigned: ${t.assignee}` : "Unassigned"}
+                        {t.required_skills.length > 0 && ` · Needs: ${t.required_skills.join(", ")}`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={t.status === "done" ? "success" : "default"}>
+                        {t.status}
+                      </Badge>
+                      {t.assignee === null && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => autoAssign(t.task_id)}
+                          disabled={busy}
+                        >
+                          Auto-assign
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))
-          )}
-        </div>
-      </Card>
-
-      <Card className="p-5">
-        <SectionTitle icon={Target}>Roadmap</SectionTitle>
-        <Button
-          variant="secondary"
-          className="mt-3"
-          disabled={busy}
-          onClick={async () => {
-            const r = await run(() => kg.kgRoadmap(workspaceId, project || undefined));
-            if (r) setRoadmap(r);
-          }}
-        >
-          Load roadmap
-        </Button>
-        {roadmap && (
-          <div className="mt-3">
-            <JsonView data={roadmap} />
-          </div>
-        )}
-      </Card>
-
-      <Card className="p-5 lg:col-span-2">
-        <SectionTitle icon={Gauge}>Capacity forecast</SectionTitle>
-        <div className="mt-3 flex gap-2">
-          <input
-            className={inputClass}
-            placeholder="Project (optional)"
-            value={project}
-            onChange={(e) => setProject(e.target.value)}
-          />
-          <Button
-            variant="secondary"
-            disabled={busy}
-            onClick={async () => {
-              const r = await run(() => kg.kgCapacity(workspaceId, project || undefined));
-              if (r) setCapacity(r);
-            }}
-          >
-            Forecast
-          </Button>
-        </div>
-        {capacity && (
-          <div className="mt-3">
-            <JsonView data={capacity} />
-          </div>
-        )}
-      </Card>
-    </div>
-  );
-}
-
-// ── Stakeholders tab ──────────────────────────────────────────────────────
-
-function StakeholdersTab({
-  workspaceId,
-  toast,
-}: {
-  workspaceId: string;
-  toast: (m: string, t?: "success" | "error" | "info") => void;
-}) {
-  const [audience, setAudience] = useState("investor");
-  const [project, setProject] = useState("");
-  const [update, setUpdate] = useState<Record<string, unknown>>();
-  const [budget, setBudget] = useState<Record<string, unknown>>();
-  const { busy, run } = useBusy();
-
-  return (
-    <div className="grid gap-5 lg:grid-cols-2">
-      <Card className="p-5">
-        <SectionTitle icon={MessageSquare}>Stakeholder update</SectionTitle>
-        <p className="mt-1 text-xs text-zinc-500">
-          Tailored to the audience: investor, customer, team, or board.
-        </p>
-        <div className="mt-3 space-y-3">
-          <Field label="Audience">
-            <select
-              className={inputClass}
-              value={audience}
-              onChange={(e) => setAudience(e.target.value)}
-            >
-              <option value="investor">Investor</option>
-              <option value="customer">Customer</option>
-              <option value="team">Team</option>
-              <option value="board">Board</option>
-            </select>
-          </Field>
-          <Field label="Project (optional)">
-            <input
-              className={inputClass}
-              value={project}
-              onChange={(e) => setProject(e.target.value)}
-            />
-          </Field>
-          <Button
-            disabled={busy}
-            onClick={async () => {
-              const r = await run(() =>
-                kg.kgStakeholderUpdate(workspaceId, {
-                  stakeholder_type: audience,
-                  project: project || undefined,
-                }),
-              );
-              if (r) setUpdate(r);
-            }}
-          >
-            <Send size={14} /> Generate
-          </Button>
-        </div>
-        {update && (
-          <div className="mt-3">
-            <JsonView data={update} />
-          </div>
-        )}
-      </Card>
-
-      <Card className="p-5">
-        <SectionTitle icon={DollarSign}>Budget status</SectionTitle>
-        <div className="mt-3 flex gap-2">
-          <input
-            className={inputClass}
-            placeholder="Project (optional)"
-            value={project}
-            onChange={(e) => setProject(e.target.value)}
-          />
-          <Button
-            variant="secondary"
-            disabled={busy}
-            onClick={async () => {
-              const r = await run(() => kg.kgBudgetStatus(workspaceId, project || undefined));
-              if (r) setBudget(r);
-            }}
-          >
-            Load
-          </Button>
-        </div>
-        {budget && (
-          <div className="mt-3">
-            <JsonView data={budget} />
-          </div>
-        )}
-      </Card>
-    </div>
-  );
-}
-
-// ── Team tab ──────────────────────────────────────────────────────────────
-
-function TeamTab({
-  workspaceId,
-  toast,
-}: {
-  workspaceId: string;
-  toast: (m: string, t?: "success" | "error" | "info") => void;
-}) {
-  const [engineer, setEngineer] = useState("");
-  const [feedback, setFeedback] = useState<Record<string, unknown>>();
-  const [morale, setMorale] = useState<Record<string, unknown>>();
-  const { busy, run } = useBusy();
-
-  return (
-    <div className="grid gap-5 lg:grid-cols-2">
-      <Card className="p-5">
-        <SectionTitle icon={Users}>Performance feedback</SectionTitle>
-        <p className="mt-1 text-xs text-zinc-500">
-          Honest, specific feedback based on contribution data and reliability.
-        </p>
-        <div className="mt-3 flex gap-2">
-          <input
-            className={inputClass}
-            placeholder="Engineer name"
-            value={engineer}
-            onChange={(e) => setEngineer(e.target.value)}
-          />
-          <Button
-            disabled={busy || !engineer}
-            onClick={async () => {
-              const r = await run(() => kg.kgPerformanceFeedback(workspaceId, engineer));
-              if (r) setFeedback(r);
-            }}
-          >
-            Generate
-          </Button>
-        </div>
-        {feedback && (
-          <div className="mt-3">
-            <JsonView data={feedback} />
-          </div>
-        )}
-      </Card>
-
-      <Card className="p-5">
-        <SectionTitle icon={Lightbulb}>Team morale</SectionTitle>
-        <p className="mt-1 text-xs text-zinc-500">
-          Sentiment trends over the last 14 days. Detects declining morale.
-        </p>
-        <Button
-          variant="secondary"
-          className="mt-3"
-          disabled={busy}
-          onClick={async () => {
-            const r = await run(() => kg.kgTeamMorale(workspaceId));
-            if (r) setMorale(r);
-          }}
-        >
-          <Bell size={14} /> Sense morale
-        </Button>
-        {morale && (
-          <div className="mt-3">
-            <JsonView data={morale} />
-          </div>
-        )}
-      </Card>
+            )}
+          </Card>
+        );
+      })}
     </div>
   );
 }

@@ -204,23 +204,42 @@ async def process_slack_reply(
                 }
         return {"processed": True, "action": "onboarding_continue", "slack_sent": False}
 
-    # Not in onboarding — ingest as a general update
+    # Not in onboarding — ingest as a general update, then generate
+    # a contextual reply using the PM brain
     try:
-        await client.ingest(
-            message=message_text,
-            speaker=person_name,
-            speaker_role="engineer",
-            channel="slack",
-        )
+        await client.ingest({
+            "message": message_text,
+            "speaker": person_name,
+            "speaker_role": "engineer",
+            "channel": "slack",
+        })
     except KGMemoryError:
         return {"processed": False, "reason": "Ingest failed"}
 
-    # Send a brief acknowledgment in the same thread
+    # Generate a contextual reply using the PM decision endpoint
+    reply_text = None
+    try:
+        decision = await client.decide({
+            "query": f"The engineer {person_name} just said: '{message_text}'. "
+            f"Respond naturally as their PM. If they're asking who you are, "
+            f"introduce yourself as their AI project manager. If they're saying "
+            f"hi, greet them back and ask how things are going. If they're "
+            f"asking a question, answer it. Keep it short and casual like Slack.",
+            "audience": "engineer",
+        })
+        reply_text = decision.get("response_text")
+    except Exception as exc:
+        logger.warning(f"PM decide failed for general reply: {exc}")
+
+    # Fall back to a simple acknowledgment if LLM failed
+    if not reply_text or len(reply_text) > 500:
+        reply_text = "Got it. Let me know if you need anything."
+
     try:
         await send_dm(
             token,
             slack_user_id,
-            "Got it, thanks. Let me know if you need anything.",
+            reply_text,
             thread_ts=reply_thread_ts,
         )
     except Exception:
