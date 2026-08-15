@@ -8,7 +8,7 @@ from ..models.work import TaskCandidate
 
 class SlackClient:
     authorize_url = "https://slack.com/oauth/v2/authorize"
-    scopes = "chat:write im:write users:read users:read.email"
+    scopes = "chat:write im:write im:history users:read users:read.email"
 
     async def access_token(self, code: str, redirect_uri: str) -> dict:
         async with httpx.AsyncClient() as client:

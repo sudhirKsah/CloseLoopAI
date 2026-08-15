@@ -856,6 +856,38 @@ async def review_work_and_send_slack(
         return {**result, "slack_sent": False, "slack_error": str(exc)}
 
 
+# ── automated pm ──────────────────────────────────────────────────────────
+# These endpoints trigger the autonomous PM: it scans the workspace and
+# initiates conversations on Slack without manual per-person triggering.
+
+
+@router.post("/pm/auto-onboard")
+async def auto_onboard(
+    workspace_id: uuid.UUID,
+    _member: WorkspaceMember = Depends(_require_member),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Automatically start onboarding for all workspace members who haven't
+    been onboarded yet. Sends the first PM question to each person on Slack."""
+    from ...services.pm_automation import auto_onboard_new_members
+
+    results = await auto_onboard_new_members(session, workspace_id)
+    return {"results": results, "count": len(results)}
+
+
+@router.post("/pm/auto-check-in")
+async def auto_check_in(
+    workspace_id: uuid.UUID,
+    _member: WorkspaceMember = Depends(_require_member),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Automatically detect who needs a check-in and send messages on Slack."""
+    from ...services.pm_automation import auto_check_in as _auto_check_in
+
+    results = await _auto_check_in(session, workspace_id)
+    return {"results": results, "count": len(results)}
+
+
 # ── planning ──────────────────────────────────────────────────────────────
 
 
