@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Activity,
+  AlertTriangle,
   Brain,
   CheckCircle2,
   Clock,
+  ListChecks,
   MessageSquare,
   RefreshCw,
   Send,
@@ -22,12 +24,13 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import * as kg from "@/lib/kgmemory";
 
-type Tab = "chat" | "team" | "projects";
+type Tab = "chat" | "team" | "projects" | "actions";
 
 const TABS: { id: Tab; label: string; icon: typeof Brain; desc: string }[] = [
   { id: "chat", label: "Chat with PM", icon: MessageSquare, desc: "Ask your AI PM anything" },
   { id: "team", label: "Team", icon: Users, desc: "Profiles, onboarding, check-ins" },
   { id: "projects", label: "Projects", icon: Target, desc: "Tasks, assignments, progress" },
+  { id: "actions", label: "Actions", icon: Activity, desc: "Alerts, tasks, and PM suggestions" },
 ];
 
 export function KgMemoryPage() {
@@ -83,6 +86,7 @@ export function KgMemoryPage() {
       {tab === "chat" && <ChatTab workspaceId={workspaceId} toast={toast} />}
       {tab === "team" && <TeamTab workspaceId={workspaceId} toast={toast} />}
       {tab === "projects" && <ProjectsTab workspaceId={workspaceId} toast={toast} />}
+      {tab === "actions" && <ActionsTab workspaceId={workspaceId} toast={toast} />}
     </Layout>
   );
 }
@@ -697,6 +701,176 @@ function ProjectsTab({
           </Card>
         );
       })}
+    </div>
+  );
+}
+
+// ── Actions Tab ───────────────────────────────────────────────────────────
+
+function ActionsTab({
+  workspaceId,
+  toast,
+}: {
+  workspaceId: string;
+  toast: (m: string, t?: "success" | "error" | "info") => void;
+}) {
+  const [alerts, setAlerts] = useState<kg.KgAlert[]>([]);
+  const [actions, setActions] = useState<kg.KgAction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [a, act] = await Promise.all([
+        kg.kgListAlerts(workspaceId).catch(() => []),
+        kg.kgListActions(workspaceId).catch(() => []),
+      ]);
+      setAlerts(a);
+      setActions(act);
+    } catch {
+      toast("Failed to load actions", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const scan = async () => {
+    setBusy(true);
+    try {
+      await kg.kgMonitorScan(workspaceId);
+      toast("Scan complete", "success");
+      void load();
+    } catch {
+      toast("Scan failed", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const ackAlert = async (id: string) => {
+    setBusy(true);
+    try {
+      await kg.kgAckAlert(workspaceId, id);
+      toast("Alert acknowledged", "success");
+      void load();
+    } catch {
+      toast("Failed to acknowledge", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const completeAction = async (id: string) => {
+    setBusy(true);
+    try {
+      await kg.kgCompleteAction(workspaceId, id);
+      toast("Action completed", "success");
+      void load();
+    } catch {
+      toast("Failed to complete action", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading) {
+    return <Skeleton className="h-32 rounded-xl" />;
+  }
+
+  const hasContent = alerts.length > 0 || actions.length > 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <Button onClick={scan} disabled={busy} size="sm">
+          <Activity size={13} /> Scan for issues
+        </Button>
+        <Button onClick={load} disabled={loading} size="sm" variant="ghost">
+          <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
+        </Button>
+      </div>
+
+      {!hasContent ? (
+        <Card className="p-8 text-center">
+          <CheckCircle2 className="mx-auto size-8 text-emerald-400" />
+          <p className="mt-3 text-sm text-zinc-400">All clear — no alerts or pending actions.</p>
+          <p className="mt-1 text-xs text-zinc-600">
+            Click "Scan for issues" to have the PM check for problems.
+          </p>
+        </Card>
+      ) : (
+        <>
+          {alerts.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle size={14} className="text-amber-400" />
+                <p className="text-sm font-medium">Alerts ({alerts.length})</p>
+              </div>
+              <div className="space-y-2">
+                {alerts.map((a) => (
+                  <Card key={a.alert_id} className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant={a.severity === "high" ? "danger" : a.severity === "medium" ? "warning" : "default"}>
+                            {a.severity}
+                          </Badge>
+                          <span className="text-xs text-zinc-500">{a.alert_type}</span>
+                        </div>
+                        <p className="mt-2 text-sm text-zinc-200">{a.message}</p>
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {a.person && `Person: ${a.person}`}
+                          {a.project && ` · Project: ${a.project}`}
+                        </p>
+                      </div>
+                      {a.status === "open" && (
+                        <Button size="sm" variant="ghost" onClick={() => ackAlert(a.alert_id)} disabled={busy}>
+                          Acknowledge
+                        </Button>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {actions.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <ListChecks size={14} className="text-blue-400" />
+                <p className="text-sm font-medium">Pending actions ({actions.length})</p>
+              </div>
+              <div className="space-y-2">
+                {actions.map((a) => (
+                  <Card key={a.action_id} className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant={a.urgency === "high" ? "danger" : a.urgency === "medium" ? "warning" : "default"}>
+                            {a.urgency}
+                          </Badge>
+                          <span className="text-xs text-zinc-500">{a.action}</span>
+                        </div>
+                        <p className="mt-2 text-sm text-zinc-200">{a.message}</p>
+                        <p className="mt-1 text-xs text-zinc-500">Target: {a.target}</p>
+                      </div>
+                      <Button size="sm" variant="ghost" onClick={() => completeAction(a.action_id)} disabled={busy}>
+                        Done
+                      </Button>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
