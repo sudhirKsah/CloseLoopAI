@@ -524,6 +524,7 @@ function PeopleTab({
   const [people, setPeople] = useState<kg.KgPersonSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<kg.KgPerson>();
+  const [selectedStatus, setSelectedStatus] = useState<kg.KgOnboardingStatus>();
   const [contributions, setContributions] = useState<Record<string, unknown>>();
   const { busy, run } = useBusy();
 
@@ -548,96 +549,253 @@ function PeopleTab({
       Promise.all([
         kg.kgGetPerson(workspaceId, name),
         kg.kgPersonContributions(workspaceId, name),
+        kg.kgOnboardingStatus(workspaceId, name).catch(() => null),
       ]),
     );
     if (result) {
-      const [p, c] = result;
+      const [p, c, s] = result;
       setSelected(p);
       setContributions(c);
+      setSelectedStatus(s ?? undefined);
+    }
+  };
+
+  const autoOnboard = async () => {
+    const result = await run(() => kg.kgAutoOnboard(workspaceId));
+    if (result) {
+      toast(`Onboarded ${result.count} member(s) on Slack`, "success");
+      void load();
+    }
+  };
+
+  const autoCheckIn = async () => {
+    const result = await run(() => kg.kgAutoCheckIn(workspaceId));
+    if (result) {
+      toast(`Sent check-ins to ${result.count} member(s) on Slack`, "success");
+    }
+  };
+
+  const startOnboarding = async (name: string) => {
+    const result = await run(() => kg.kgStartOnboarding(workspaceId, name));
+    if (result) {
+      toast(`Started onboarding for ${name}`, "success");
+      void open(name);
     }
   };
 
   return (
-    <div className="grid gap-5 lg:grid-cols-3">
-      <Card className="p-5 lg:col-span-1">
-        <div className="flex items-center justify-between">
-          <SectionTitle icon={Users}>Team reliability</SectionTitle>
-          <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
-            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-          </Button>
+    <div className="space-y-4">
+      {/* PM action bar */}
+      <Card className="flex items-center justify-between p-4">
+        <div>
+          <p className="text-sm font-medium">Automated PM</p>
+          <p className="text-xs text-zinc-500">
+            Let the AI PM onboard and check in with your team on Slack
+          </p>
         </div>
-        <div className="mt-4 space-y-2">
-          {loading ? (
-            <Skeleton className="h-16 rounded-xl" />
-          ) : people.length === 0 ? (
-            <p className="py-8 text-center text-xs text-zinc-600">
-              No people in memory yet.
-            </p>
-          ) : (
-            people.map((p) => (
-              <button
-                key={p.name}
-                onClick={() => open(p.name)}
-                className="w-full rounded-xl border border-white/[.06] bg-white/[.02] p-3 text-left transition hover:bg-white/[.05]"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-zinc-200">
-                    {p.name}
-                  </span>
-                  <ReliabilityBadge score={p.reliability_score} />
-                </div>
-                <p className="mt-1 text-xs text-zinc-500">
-                  {p.title ?? p.role} · {p.completed_count} done ·{" "}
-                  {p.missed_count} missed
-                </p>
-              </button>
-            ))
-          )}
+        <div className="flex gap-2">
+          <Button size="sm" onClick={autoOnboard} disabled={busy}>
+            <Send size={13} /> Auto-onboard all
+          </Button>
+          <Button size="sm" variant="secondary" onClick={autoCheckIn} disabled={busy}>
+            <MessageSquare size={13} /> Auto check-in
+          </Button>
         </div>
       </Card>
 
-      <Card className="p-5 lg:col-span-2">
-        {!selected ? (
-          <p className="py-16 text-center text-sm text-zinc-600">
-            Select a person to see their full profile.
-          </p>
-        ) : (
-          <div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-lg font-semibold">{selected.name}</p>
-                <p className="text-xs text-zinc-500">
-                  {selected.title ?? selected.role}
-                </p>
-              </div>
-              <ReliabilityBadge
-                score={
-                  (selected.reliability?.score as number | undefined) ?? 0
-                }
-              />
-            </div>
-            {selected.skills.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {selected.skills.map((s) => (
-                  <Badge key={s} variant="default">
-                    {s}
-                  </Badge>
-                ))}
-              </div>
-            )}
-            {contributions && (
-              <div className="mt-4">
-                <p className="text-xs uppercase tracking-wider text-zinc-500">
-                  Contributions
-                </p>
-                <div className="mt-2">
-                  <JsonView data={contributions} />
-                </div>
-              </div>
+      <div className="grid gap-5 lg:grid-cols-3">
+        <Card className="p-5 lg:col-span-1">
+          <div className="flex items-center justify-between">
+            <SectionTitle icon={Users}>Team</SectionTitle>
+            <Button size="sm" variant="ghost" onClick={load} disabled={loading}>
+              <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+            </Button>
+          </div>
+          <div className="mt-4 space-y-2">
+            {loading ? (
+              <Skeleton className="h-16 rounded-xl" />
+            ) : people.length === 0 ? (
+              <p className="py-8 text-center text-xs text-zinc-600">
+                No people in memory yet. Run auto-onboard to get started.
+              </p>
+            ) : (
+              people.map((p) => (
+                <button
+                  key={p.name}
+                  onClick={() => open(p.name)}
+                  className="w-full rounded-xl border border-white/[.06] bg-white/[.02] p-3 text-left transition hover:bg-white/[.05]"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium capitalize text-zinc-200">
+                      {p.name}
+                    </span>
+                    <ReliabilityBadge score={p.reliability_score} />
+                  </div>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {p.title ?? p.role} · {p.completed_count} done ·{" "}
+                    {p.missed_count} missed
+                  </p>
+                </button>
+              ))
             )}
           </div>
-        )}
-      </Card>
+        </Card>
+
+        <Card className="p-5 lg:col-span-2">
+          {!selected ? (
+            <p className="py-16 text-center text-sm text-zinc-600">
+              Select a person to see their full profile.
+            </p>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-lg font-semibold capitalize">{selected.name}</p>
+                  <p className="text-xs text-zinc-500">
+                    {selected.title ?? selected.role}
+                  </p>
+                </div>
+                <ReliabilityBadge
+                  score={
+                    (selected.reliability?.score as number | undefined) ?? 0
+                  }
+                />
+              </div>
+
+              {/* Onboarding status */}
+              {selectedStatus && (
+                <div className="mt-4 rounded-xl border border-white/[.06] bg-white/[.02] p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs uppercase tracking-wider text-zinc-500">
+                      Onboarding
+                    </p>
+                    {selectedStatus.completed ? (
+                      <Badge variant="success">
+                        <CheckCircle2 size={11} /> Complete
+                      </Badge>
+                    ) : selectedStatus.started ? (
+                      <Badge variant="warning">
+                        In progress · {selectedStatus.step}
+                      </Badge>
+                    ) : (
+                      <Badge variant="default">Not started</Badge>
+                    )}
+                  </div>
+                  {!selectedStatus.completed && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <p className="text-xs text-zinc-500">
+                        {selectedStatus.fact_count} facts learned
+                      </p>
+                      {!selectedStatus.started && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => startOnboarding(selected.name)}
+                          disabled={busy}
+                        >
+                          Start onboarding
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Skills */}
+              {selected.skills.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">
+                    Skills
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {selected.skills.map((s) => (
+                      <Badge key={s} variant="default">
+                        {s}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Availability */}
+              {(selected.availability_hours_per_week || selected.timezone) && (
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  {selected.availability_hours_per_week && (
+                    <div>
+                      <p className="text-xs uppercase tracking-wider text-zinc-500">
+                        Availability
+                      </p>
+                      <p className="mt-1 text-sm">
+                        {selected.availability_hours_per_week} hrs/week
+                      </p>
+                    </div>
+                  )}
+                  {selected.timezone && (
+                    <div>
+                      <p className="text-xs uppercase tracking-wider text-zinc-500">
+                        Timezone
+                      </p>
+                      <p className="mt-1 text-sm">{selected.timezone}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Interests */}
+              {selected.interests && selected.interests.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">
+                    Interests
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {selected.interests.map((i) => (
+                      <Badge key={i} variant="default">
+                        {i}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Facts — what the PM learned */}
+              {selected.facts && selected.facts.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">
+                    What the PM knows ({selected.facts.length})
+                  </p>
+                  <div className="mt-2 space-y-1.5 max-h-64 overflow-y-auto">
+                    {selected.facts.slice(0, 20).map((f, i) => (
+                      <div
+                        key={i}
+                        className="rounded-lg border border-white/[.04] bg-white/[.01] px-3 py-1.5"
+                      >
+                        <span className="text-xs text-zinc-400">
+                          {f.predicate as string}:{" "}
+                        </span>
+                        <span className="text-xs text-zinc-200">
+                          {f.value as string}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Contributions */}
+              {contributions && (
+                <div className="mt-4">
+                  <p className="text-xs uppercase tracking-wider text-zinc-500">
+                    Contributions
+                  </p>
+                  <div className="mt-2">
+                    <JsonView data={contributions} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }

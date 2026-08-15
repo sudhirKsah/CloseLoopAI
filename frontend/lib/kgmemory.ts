@@ -432,3 +432,50 @@ export async function kgTeamMorale(workspaceId: string) {
     method: "POST",
   });
 }
+
+// onboarding
+export type KgOnboardingStatus = {
+  person: string;
+  started: boolean;
+  step: string;
+  completed: boolean;
+  skills_known: boolean;
+  availability_known: boolean;
+  preferences_known: boolean;
+  fact_count: number;
+};
+
+export async function kgOnboardingStatus(workspaceId: string, name: string) {
+  return api<KgOnboardingStatus>(
+    `${base(workspaceId)}/onboarding/status?name=${encodeURIComponent(name)}`,
+  );
+}
+
+export async function kgStartOnboarding(workspaceId: string, name: string, role = "engineer") {
+  return api<{ message: string; step: string; person: string }>(
+    `${base(workspaceId)}/onboarding/start`,
+    { method: "POST", body: JSON.stringify({ name, role }) },
+  );
+}
+
+export async function kgContinueOnboarding(workspaceId: string, name: string, message: string, step: string) {
+  return api<{ message: string; step: string; person: string }>(
+    `${base(workspaceId)}/onboarding/continue`,
+    { method: "POST", body: JSON.stringify({ name, message, current_step: step }) },
+  );
+}
+
+// automated PM
+export async function kgAutoOnboard(workspaceId: string) {
+  return api<{ results: Record<string, unknown>[]; count: number }>(
+    `${base(workspaceId)}/pm/auto-onboard`,
+    { method: "POST" },
+  );
+}
+
+export async function kgAutoCheckIn(workspaceId: string) {
+  return api<{ results: Record<string, unknown>[]; count: number }>(
+    `${base(workspaceId)}/pm/auto-check-in`,
+    { method: "POST" },
+  );
+}
