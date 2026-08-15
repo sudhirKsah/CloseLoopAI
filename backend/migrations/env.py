@@ -1,4 +1,11 @@
 from logging.config import fileConfig
+import asyncio
+import sys
+
+# psycopg3 requires SelectorEventLoop on Windows (ProactorEventLoop is incompatible).
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 from app.config import settings

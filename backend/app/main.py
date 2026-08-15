@@ -1,4 +1,13 @@
 from contextlib import asynccontextmanager
+import asyncio
+import sys
+
+# psycopg3 (async PostgreSQL driver) requires SelectorEventLoop on Windows.
+# ProactorEventLoop (Windows default) is incompatible. This is a no-op on
+# Linux/macOS where the default loop is already compatible.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .celery_app import celery
