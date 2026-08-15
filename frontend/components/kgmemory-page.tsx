@@ -764,19 +764,54 @@ function PeopleTab({
                     What the PM knows ({selected.facts.length})
                   </p>
                   <div className="mt-2 space-y-1.5 max-h-64 overflow-y-auto">
-                    {selected.facts.slice(0, 20).map((f, i) => (
-                      <div
-                        key={i}
-                        className="rounded-lg border border-white/[.04] bg-white/[.01] px-3 py-1.5"
-                      >
-                        <span className="text-xs text-zinc-400">
-                          {f.predicate as string}:{" "}
-                        </span>
-                        <span className="text-xs text-zinc-200">
-                          {f.value as string}
-                        </span>
-                      </div>
-                    ))}
+                    {selected.facts
+                      .slice()
+                      .sort((a, b) => {
+                        const order: Record<string, number> = {
+                          identity: 0,
+                          skill: 1,
+                          availability: 2,
+                          preference: 3,
+                          experience: 4,
+                          fact: 5,
+                        };
+                        const ka = order[(a.fact_kind as string)] ?? 9;
+                        const kb = order[(b.fact_kind as string)] ?? 9;
+                        return ka - kb;
+                      })
+                      .map((f, i) => {
+                        const kind = f.fact_kind as string;
+                        const kindLabels: Record<string, string> = {
+                          identity: "Role",
+                          skill: "Skill",
+                          availability: "Availability",
+                          preference: "Preference",
+                          experience: "Experience",
+                          fact: "Info",
+                        };
+                        const label = kindLabels[kind] ?? "Info";
+                        const kindColors: Record<string, string> = {
+                          identity: "text-emerald-400",
+                          skill: "text-blue-400",
+                          availability: "text-amber-400",
+                          preference: "text-purple-400",
+                          experience: "text-cyan-400",
+                          fact: "text-zinc-400",
+                        };
+                        return (
+                          <div
+                            key={i}
+                            className="flex items-start gap-2 rounded-lg border border-white/[.04] bg-white/[.01] px-3 py-1.5"
+                          >
+                            <span className={`text-xs font-medium ${kindColors[kind] ?? "text-zinc-400"}`}>
+                              {label}
+                            </span>
+                            <span className="text-xs text-zinc-200">
+                              {f.value as string}
+                            </span>
+                          </div>
+                        );
+                      })}
                   </div>
                 </div>
               )}
