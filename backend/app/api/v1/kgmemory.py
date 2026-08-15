@@ -20,8 +20,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...api.deps import current_user
 from ...db.session import get_session
-from ...models.core import User, WorkspaceMember
+from ...models.core import ExternalIdentity, User, WorkspaceMember
+from ...models.integrations import (
+    Integration,
+    IntegrationProvider,
+    OAuthCredential,
+)
+from ...services.credentials import CredentialVault
 from ...services.kgmemory import KGMemoryError, get_client_for_workspace
+from ...services.slack import send_dm
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/kgmemory", tags=["kgmemory"])
 
@@ -627,6 +634,226 @@ async def onboarding_status(name: str = Query(...), client=Depends(_client)) -> 
         return await client.onboarding_status(name)
     except KGMemoryError as e:
         raise _wrap(e)
+
+
+# ── slack delivery ────────────────────────────────────────────────────────
+# These endpoints combine a kgmemory PM operation with actual Slack delivery.
+# They generate a PM message (check-in, onboarding question, work review) via
+# the memory service, then send it as a DM to the engineer on Slack.
+
+
+async def _slack_token_for_workspace(
+    session: AsyncSession, workspace_id: uuid.UUID
+) -> str | None:
+    """Return the decrypted Slack OAuth token for a workspace, or None."""
+    integration = (
+        await session.execute(
+            select(Integration).where(
+                Integration.workspace_id == workspace_id,
+                Integration.provider == IntegrationProvider.SLACK,
+            )
+        )
+    ).scalar_one_or_none()
+    if not integration:
+        return None
+    credential = (
+        await session.execute(
+            select(OAuthCredential).where(
+                OAuthCredential.integration_id == integration.id
+            )
+        )
+    ).scalar_one_or_none()
+    if not credential:
+        return None
+    return CredentialVault().decrypt(credential.access_token_encrypted)
+
+
+async def _slack_user_id_for_name(
+    session: AsyncSession, workspace_id: uuid.UUID, name: str
+) -> str | None:
+    """Look up a person's Slack user id by matching their display name or
+    email against workspace members. The kgmemory person name is typically a
+    first name or full name in lowercase; we do a case-insensitive match."""
+    # Try exact display_name match first
+    members = (
+        await session.execute(
+            select(WorkspaceMember).where(
+                WorkspaceMember.workspace_id == workspace_id
+            )
+        )
+    ).scalars().all()
+    user_ids = [m.user_id for m in members]
+    if not user_ids:
+        return None
+    users = (
+        await session.execute(
+            select(User).where(User.id.in_(user_ids))
+        )
+    ).scalars().all()
+    name_lower = name.strip().lower()
+    for user in users:
+        if user.display_name and user.display_name.strip().lower() == name_lower:
+            identity = (
+                await session.execute(
+                    select(ExternalIdentity).where(
+                        ExternalIdentity.provider == "slack",
+                        ExternalIdentity.user_id == user.id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if identity:
+                return identity.external_user_id
+    # Fallback: partial / first-name match
+    for user in users:
+        if user.display_name and name_lower in user.display_name.strip().lower():
+            identity = (
+                await session.execute(
+                    select(ExternalIdentity).where(
+                        ExternalIdentity.provider == "slack",
+                        ExternalIdentity.user_id == user.id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if identity:
+                return identity.external_user_id
+    return None
+
+
+class SlackCheckInRequest(BaseModel):
+    person: str
+
+
+@router.post("/pm/check-in/slack")
+async def check_in_and_send_slack(
+    body: SlackCheckInRequest,
+    workspace_id: uuid.UUID,
+    _member: WorkspaceMember = Depends(_require_member),
+    client=Depends(_client),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Generate a PM check-in message and send it to the person on Slack."""
+    try:
+        result = await client.check_in(body.person)
+    except KGMemoryError as e:
+        raise _wrap(e)
+    if not result.get("needed") or not result.get("check_in_message"):
+        return result
+    token = await _slack_token_for_workspace(session, workspace_id)
+    if not token:
+        return {**result, "slack_sent": False, "slack_error": "Slack not connected"}
+    slack_id = await _slack_user_id_for_name(session, workspace_id, body.person)
+    if not slack_id:
+        return {**result, "slack_sent": False, "slack_error": f"No Slack user found for '{body.person}'"}
+    try:
+        await send_dm(token, slack_id, result["check_in_message"])
+        return {**result, "slack_sent": True, "slack_user_id": slack_id}
+    except Exception as exc:
+        return {**result, "slack_sent": False, "slack_error": str(exc)}
+
+
+class SlackOnboardingStartRequest(BaseModel):
+    name: str
+    role: str = "engineer"
+
+
+@router.post("/onboarding/start/slack")
+async def start_onboarding_and_send_slack(
+    body: SlackOnboardingStartRequest,
+    workspace_id: uuid.UUID,
+    _member: WorkspaceMember = Depends(_require_member),
+    client=Depends(_client),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Start onboarding and send the first question to the engineer on Slack."""
+    try:
+        result = await client.start_onboarding(body.name, body.role)
+    except KGMemoryError as e:
+        raise _wrap(e)
+    message = result.get("message")
+    if not message:
+        return result
+    token = await _slack_token_for_workspace(session, workspace_id)
+    if not token:
+        return {**result, "slack_sent": False, "slack_error": "Slack not connected"}
+    slack_id = await _slack_user_id_for_name(session, workspace_id, body.name)
+    if not slack_id:
+        return {**result, "slack_sent": False, "slack_error": f"No Slack user found for '{body.name}'"}
+    try:
+        await send_dm(token, slack_id, message)
+        return {**result, "slack_sent": True, "slack_user_id": slack_id}
+    except Exception as exc:
+        return {**result, "slack_sent": False, "slack_error": str(exc)}
+
+
+class SlackOnboardingContinueRequest(BaseModel):
+    name: str
+    message: str
+    current_step: str
+
+
+@router.post("/onboarding/continue/slack")
+async def continue_onboarding_and_send_slack(
+    body: SlackOnboardingContinueRequest,
+    workspace_id: uuid.UUID,
+    _member: WorkspaceMember = Depends(_require_member),
+    client=Depends(_client),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Continue onboarding and send the next question to the engineer on Slack."""
+    try:
+        result = await client.continue_onboarding(body.name, body.message, body.current_step)
+    except KGMemoryError as e:
+        raise _wrap(e)
+    message = result.get("message")
+    if not message:
+        return result
+    token = await _slack_token_for_workspace(session, workspace_id)
+    if not token:
+        return {**result, "slack_sent": False, "slack_error": "Slack not connected"}
+    slack_id = await _slack_user_id_for_name(session, workspace_id, body.name)
+    if not slack_id:
+        return {**result, "slack_sent": False, "slack_error": f"No Slack user found for '{body.name}'"}
+    try:
+        await send_dm(token, slack_id, message)
+        return {**result, "slack_sent": True, "slack_user_id": slack_id}
+    except Exception as exc:
+        return {**result, "slack_sent": False, "slack_error": str(exc)}
+
+
+class SlackReviewWorkRequest(BaseModel):
+    engineer: str
+    claim: str
+    project: str | None = None
+
+
+@router.post("/pm/review-work/slack")
+async def review_work_and_send_slack(
+    body: SlackReviewWorkRequest,
+    workspace_id: uuid.UUID,
+    _member: WorkspaceMember = Depends(_require_member),
+    client=Depends(_client),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Review an engineer's work claim and send them feedback on Slack."""
+    try:
+        result = await client.review_work(body.engineer, body.claim, body.project)
+    except KGMemoryError as e:
+        raise _wrap(e)
+    # Send the honest review to the engineer
+    message = result.get("honest_review") or result.get("what_is_missing")
+    if not message:
+        return result
+    token = await _slack_token_for_workspace(session, workspace_id)
+    if not token:
+        return {**result, "slack_sent": False, "slack_error": "Slack not connected"}
+    slack_id = await _slack_user_id_for_name(session, workspace_id, body.engineer)
+    if not slack_id:
+        return {**result, "slack_sent": False, "slack_error": f"No Slack user found for '{body.engineer}'"}
+    try:
+        await send_dm(token, slack_id, message)
+        return {**result, "slack_sent": True, "slack_user_id": slack_id}
+    except Exception as exc:
+        return {**result, "slack_sent": False, "slack_error": str(exc)}
 
 
 # ── planning ──────────────────────────────────────────────────────────────
