@@ -130,17 +130,27 @@ async def open_dm(token: str, slack_user_id: str) -> str:
     return data["channel"]["id"]
 
 
-async def send_dm(token: str, slack_user_id: str, text: str) -> dict:
+async def send_dm(
+    token: str,
+    slack_user_id: str,
+    text: str,
+    thread_ts: str | None = None,
+) -> dict:
     """Send a direct message to a Slack user by their Slack user id.
 
     Opens a DM channel first (required for bot tokens) then posts the message.
+    If thread_ts is provided, replies in that thread instead of starting a new
+    top-level message.
     """
     channel_id = await open_dm(token, slack_user_id)
+    payload: dict = {"channel": channel_id, "text": text}
+    if thread_ts:
+        payload["thread_ts"] = thread_ts
     async with httpx.AsyncClient() as client:
         response = await client.post(
             "https://slack.com/api/chat.postMessage",
             headers={"Authorization": f"Bearer {token}"},
-            json={"channel": channel_id, "text": text},
+            json=payload,
         )
         response.raise_for_status()
         data = response.json()

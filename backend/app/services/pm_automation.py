@@ -26,6 +26,10 @@ from .credentials import CredentialVault
 from .kgmemory import KGMemoryError, get_client_for_workspace
 from .slack import send_dm
 
+# In-memory thread tracking: maps slack_user_id -> thread_ts
+# so the PM replies in the same thread instead of new top-level messages.
+_thread_ts: dict[str, str] = {}
+
 
 async def get_slack_token(session: AsyncSession, workspace_id: uuid.UUID) -> str | None:
     integration = (
@@ -125,6 +129,7 @@ async def process_slack_reply(
     session: AsyncSession,
     slack_user_id: str,
     message_text: str,
+    thread_ts: str | None = None,
 ) -> dict[str, Any]:
     """Process an incoming Slack DM reply from an engineer.
 
@@ -151,6 +156,10 @@ async def process_slack_reply(
 
     person_name = (user.display_name or "").split()[0] or user.display_name or "there"
 
+    # Use the thread_ts from the incoming message if available,
+    # otherwise use the last known thread for this user
+    reply_thread_ts = thread_ts or _thread_ts.get(slack_user_id)
+
     # Check onboarding status
     try:
         onboarding = await client.onboarding_status(person_name)
@@ -170,12 +179,20 @@ async def process_slack_reply(
         pm_message = result.get("message")
         if pm_message:
             try:
-                await send_dm(token, slack_user_id, pm_message)
+                resp = await send_dm(
+                    token, slack_user_id, pm_message, thread_ts=reply_thread_ts
+                )
+                # Track the thread timestamp for future replies
+                if resp.get("ok"):
+                    ts = resp.get("ts")
+                    if ts:
+                        _thread_ts[slack_user_id] = ts
                 return {
                     "processed": True,
                     "action": "onboarding_continue",
                     "step": result.get("step"),
                     "slack_sent": True,
+                    "thread_ts": reply_thread_ts,
                 }
             except Exception as exc:
                 return {
@@ -198,12 +215,13 @@ async def process_slack_reply(
     except KGMemoryError:
         return {"processed": False, "reason": "Ingest failed"}
 
-    # Send a brief acknowledgment
+    # Send a brief acknowledgment in the same thread
     try:
         await send_dm(
             token,
             slack_user_id,
-            "Thanks for the update! I've noted it. Is there anything you need help with?",
+            "Got it, thanks. Let me know if you need anything.",
+            thread_ts=reply_thread_ts,
         )
     except Exception:
         pass
@@ -276,7 +294,10 @@ async def auto_onboard_new_members(
         pm_message = result.get("message")
         if pm_message:
             try:
-                await send_dm(token, identity.external_user_id, pm_message)
+                resp = await send_dm(token, identity.external_user_id, pm_message)
+                # Track the thread timestamp so future replies stay in thread
+                if resp.get("ok") and resp.get("ts"):
+                    _thread_ts[identity.external_user_id] = resp["ts"]
                 results.append({
                     "person": person_name,
                     "slack_user_id": identity.external_user_id,
