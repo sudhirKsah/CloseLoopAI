@@ -130,7 +130,7 @@ for local resets only — do not run it against a real database.
 
 ## kgmemory (knowledge-graph memory layer)
 
-CloseLoop can optionally connect to [`memory-pinchfast`](../../memory-pinchfast)
+CloseLoop can optionally connect to [`memory-closeloop`](./memory-closeloop)
 (`kgmemory`), a separate FastAPI microservice that ingests conversation facts
 into a per-organization knowledge graph and computes engineer reliability /
 project health over time. When connected:
@@ -144,12 +144,12 @@ project health over time. When connected:
 ### Run kgmemory locally
 
 ```bash
-cd ../memory-pinchfast
+cd ../memory-closeloop
 cp .env.template .env   # set LLM_API_KEY/EMBEDDING_API_KEY (OpenAI-compatible)
 docker compose up -d    # postgres:5433, redis:6381, falkordb:6380, api:8001
 ```
 
-Create an org + API key (see `memory-pinchfast/README.md`), then connect a
+Create an org + API key (see `memory-closeloop/README.md`), then connect a
 CloseLoop workspace to it:
 
 ```bash
