@@ -701,27 +701,20 @@ function PeopleTab({
                 </div>
               )}
 
-              {/* Skills */}
-              {selected.skills.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-xs uppercase tracking-wider text-zinc-500">
-                    Skills
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {selected.skills.map((s) => (
-                      <Badge key={s} variant="default">
-                        {s}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+              {/* Rich profile — grouped by fact type */}
+              {selected.facts && selected.facts.length > 0 ? (
+                <ProfileFacts facts={selected.facts} />
+              ) : (
+                <p className="mt-6 py-8 text-center text-xs text-zinc-600">
+                  No profile data yet. The PM will build this during onboarding.
+                </p>
               )}
 
-              {/* Availability */}
+              {/* Structured fields */}
               {(selected.availability_hours_per_week || selected.timezone) && (
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   {selected.availability_hours_per_week && (
-                    <div>
+                    <div className="rounded-lg border border-white/[.04] bg-white/[.01] p-2.5">
                       <p className="text-xs uppercase tracking-wider text-zinc-500">
                         Availability
                       </p>
@@ -731,7 +724,7 @@ function PeopleTab({
                     </div>
                   )}
                   {selected.timezone && (
-                    <div>
+                    <div className="rounded-lg border border-white/[.04] bg-white/[.01] p-2.5">
                       <p className="text-xs uppercase tracking-wider text-zinc-500">
                         Timezone
                       </p>
@@ -741,86 +734,11 @@ function PeopleTab({
                 </div>
               )}
 
-              {/* Interests */}
-              {selected.interests && selected.interests.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-xs uppercase tracking-wider text-zinc-500">
-                    Interests
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {selected.interests.map((i) => (
-                      <Badge key={i} variant="default">
-                        {i}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Facts — what the PM learned */}
-              {selected.facts && selected.facts.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-xs uppercase tracking-wider text-zinc-500">
-                    What the PM knows ({selected.facts.length})
-                  </p>
-                  <div className="mt-2 space-y-1.5 max-h-64 overflow-y-auto">
-                    {selected.facts
-                      .slice()
-                      .sort((a, b) => {
-                        const order: Record<string, number> = {
-                          identity: 0,
-                          skill: 1,
-                          availability: 2,
-                          preference: 3,
-                          experience: 4,
-                          fact: 5,
-                        };
-                        const ka = order[(a.fact_kind as string)] ?? 9;
-                        const kb = order[(b.fact_kind as string)] ?? 9;
-                        return ka - kb;
-                      })
-                      .map((f, i) => {
-                        const kind = f.fact_kind as string;
-                        const kindLabels: Record<string, string> = {
-                          identity: "Role",
-                          skill: "Skill",
-                          availability: "Availability",
-                          preference: "Preference",
-                          experience: "Experience",
-                          fact: "Info",
-                        };
-                        const label = kindLabels[kind] ?? "Info";
-                        const kindColors: Record<string, string> = {
-                          identity: "text-emerald-400",
-                          skill: "text-blue-400",
-                          availability: "text-amber-400",
-                          preference: "text-purple-400",
-                          experience: "text-cyan-400",
-                          fact: "text-zinc-400",
-                        };
-                        return (
-                          <div
-                            key={i}
-                            className="flex items-start gap-2 rounded-lg border border-white/[.04] bg-white/[.01] px-3 py-1.5"
-                          >
-                            <span className={`text-xs font-medium ${kindColors[kind] ?? "text-zinc-400"}`}>
-                              {label}
-                            </span>
-                            <span className="text-xs text-zinc-200">
-                              {f.value as string}
-                            </span>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
-              )}
-
               {/* Contributions */}
-              {contributions && (
+              {contributions && Object.keys(contributions).length > 0 && (
                 <div className="mt-4">
                   <p className="text-xs uppercase tracking-wider text-zinc-500">
-                    Contributions
+                    Work & Contributions
                   </p>
                   <div className="mt-2">
                     <JsonView data={contributions} />
@@ -831,6 +749,85 @@ function PeopleTab({
           )}
         </Card>
       </div>
+    </div>
+  );
+}
+
+function ProfileFacts({ facts }: { facts: Record<string, unknown>[] }) {
+  type Group = {
+    label: string;
+    icon: typeof Users;
+    color: string;
+    items: { value: string; predicate: string }[];
+  };
+
+  const groups: Record<string, Group> = {
+    identity: { label: "Role & Identity", icon: Users, color: "text-emerald-400", items: [] },
+    experience: { label: "Experience", icon: TrendingUp, color: "text-cyan-400", items: [] },
+    skill: { label: "Skills & Tech", icon: Zap, color: "text-blue-400", items: [] },
+    project: { label: "Projects", icon: Target, color: "text-orange-400", items: [] },
+    availability: { label: "Availability", icon: Activity, color: "text-amber-400", items: [] },
+    preference: { label: "Interests & Preferences", icon: Lightbulb, color: "text-purple-400", items: [] },
+    work_style: { label: "Work Style & Communication", icon: MessageSquare, color: "text-pink-400", items: [] },
+    fact: { label: "Other Notes", icon: Brain, color: "text-zinc-400", items: [] },
+  };
+
+  const seen = new Set<string>();
+  for (const f of facts) {
+    const kind = (f.fact_kind as string) || "fact";
+    const value = (f.value as string) || "";
+    const predicate = (f.predicate as string) || "";
+    const key = `${kind}:${value.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (groups[kind]) {
+      groups[kind].items.push({ value, predicate });
+    } else {
+      groups.fact.items.push({ value, predicate });
+    }
+  }
+
+  const ordered = Object.values(groups).filter((g) => g.items.length > 0);
+
+  if (ordered.length === 0) return null;
+
+  return (
+    <div className="mt-4 space-y-4">
+      {ordered.map((g) => (
+        <div key={g.label}>
+          <div className="flex items-center gap-1.5">
+            <g.icon size={12} className={g.color} />
+            <p className="text-xs uppercase tracking-wider text-zinc-500">
+              {g.label}
+            </p>
+          </div>
+          <div className="mt-2 space-y-1.5">
+            {g.label === "Skills & Tech" ? (
+              <div className="flex flex-wrap gap-1.5">
+                {g.items.map((item, i) => (
+                  <Badge key={i} variant="default">
+                    {item.value}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              g.items.map((item, i) => (
+                <div
+                  key={i}
+                  className="rounded-lg border border-white/[.04] bg-white/[.01] px-3 py-2"
+                >
+                  <span className={`text-xs font-medium ${g.color}`}>
+                    {item.predicate}
+                  </span>
+                  <span className="ml-1.5 text-sm text-zinc-200">
+                    {item.value}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
