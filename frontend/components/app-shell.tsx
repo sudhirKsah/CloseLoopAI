@@ -14,6 +14,7 @@ import {
   Menu,
   Settings,
   ShieldCheck,
+  Sparkles,
   Users,
   X,
 } from "lucide-react";
@@ -29,6 +30,7 @@ const links = [
   ["People", "/people", Users],
   ["Analytics", "/analytics", Activity],
   ["Integrations", "/integrations", Link2],
+  ["PM Memory", "/memory", Sparkles],
   ["Reports", "/reports", FileBarChart],
   ["Settings", "/settings", Settings],
 ] as const;
