@@ -1,11 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   CreditCard,
   CheckCircle2,
   Clock,
-  AlertCircle,
   RefreshCw,
   Sparkles,
   TrendingUp,
@@ -48,13 +48,13 @@ interface Plan {
 
 const PLANS: Plan[] = [
   {
-    id: "weekly",
-    name: "Weekly",
-    price: 100000, // ₹1,000 in paise
+    id: "trial",
+    name: "Free Trial",
+    price: 0,
     currency: "INR",
-    period: "week",
+    period: "1 week",
     icon: Sparkles,
-    tagline: "Try it out — no commitment",
+    tagline: "No card needed — try it out",
     features: [
       "Full AI PM chat access",
       "Up to 3 team members",
@@ -124,7 +124,7 @@ export function PaymentsPage() {
   const [payments, setPayments] = useState<PaymentListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [billingPeriod, setBillingPeriod] = useState<"weekly" | "monthly" | "yearly">("monthly");
+  const [billingPeriod, setBillingPeriod] = useState<"trial" | "monthly" | "yearly">("monthly");
 
   const load = useCallback(async () => {
     if (!workspaceId) return;
@@ -150,6 +150,7 @@ export function PaymentsPage() {
   }, [load]);
 
   const formatAmount = (paise: number, curr: string) => {
+    if (paise === 0) return "Free";
     const value = paise / 100;
     if (curr === "INR") return `₹${value.toLocaleString("en-IN")}`;
     if (curr === "USD") return `$${value.toLocaleString("en-US")}`;
@@ -218,35 +219,25 @@ export function PaymentsPage() {
     <div>
       <Header />
 
-      {/* Not configured warning */}
+      {/* Not configured — graceful contact-us banner */}
       {config && !config.configured && (
-        <Card className="mb-6 border-amber-300/20 bg-amber-500/[.04] p-5">
+        <Card className="mb-6 border-emerald-300/20 bg-emerald-500/[.04] p-5">
           <div className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 size-5 shrink-0 text-amber-300" />
+            <Sparkles className="mt-0.5 size-5 shrink-0 text-emerald-300" />
             <div>
-              <p className="text-sm font-medium text-amber-100">
-                Razorpay is not configured yet
+              <p className="text-sm font-medium text-emerald-100">
+                We&apos;re rolling out payments gradually
               </p>
               <p className="mt-1 text-xs text-zinc-400">
-                To start accepting payments, add your Razorpay keys to the backend{" "}
-                <code className="rounded bg-white/10 px-1 py-0.5 text-[11px]">.env</code> file:
+                Online checkout is coming soon. In the meantime, reach out to us
+                and we&apos;ll set you up manually — usually within a few hours.
               </p>
-              <pre className="mt-2 rounded-lg bg-black/40 p-3 text-[11px] text-zinc-300">
-{`RAZORPAY_KEY_ID=rzp_test_XXXXXXXX
-RAZORPAY_KEY_SECRET=XXXXXXXX`}
-              </pre>
-              <p className="mt-2 text-xs text-zinc-500">
-                Get free test keys at{" "}
-                <a
-                  href="https://dashboard.razorpay.com/app/keys"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-emerald-300 underline"
-                >
-                  dashboard.razorpay.com
-                </a>
-                . Test mode works without any legal paperwork.
-              </p>
+              <a
+                href="mailto:payment@mail.pathayo.com?subject=CloseLoop%20Subscription%20Inquiry"
+                className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-emerald-300 hover:underline"
+              >
+                <CreditCard size={13} /> payment@mail.pathayo.com
+              </a>
             </div>
           </div>
         </Card>
@@ -306,17 +297,44 @@ RAZORPAY_KEY_SECRET=XXXXXXXX`}
                 <span className="text-sm text-zinc-500">/{plan.period}</span>
               </div>
 
-              {/* Subscribe button */}
-              <Button
-                onClick={() => subscribe(plan)}
-                disabled={busy}
-                size="lg"
-                variant={plan.highlighted ? "primary" : "secondary"}
-                className="mt-4 w-full"
-              >
-                <CreditCard size={15} />
-                {busy ? "Processing..." : `Subscribe ${plan.name}`}
-              </Button>
+              {/* Subscribe / Contact us / Free trial button */}
+              {plan.price === 0 ? (
+                <Link href="/signup" className="mt-4 block">
+                  <Button
+                    size="lg"
+                    variant={plan.highlighted ? "primary" : "secondary"}
+                    className="w-full"
+                  >
+                    <Sparkles size={15} />
+                    Start free trial
+                  </Button>
+                </Link>
+              ) : config?.configured ? (
+                <Button
+                  onClick={() => subscribe(plan)}
+                  disabled={busy}
+                  size="lg"
+                  variant={plan.highlighted ? "primary" : "secondary"}
+                  className="mt-4 w-full"
+                >
+                  <CreditCard size={15} />
+                  {busy ? "Processing..." : `Subscribe ${plan.name}`}
+                </Button>
+              ) : (
+                <a
+                  href={`mailto:payment@mail.pathayo.com?subject=CloseLoop%20${plan.name}%20Plan&body=Hi%20CloseLoop%20team%2C%0A%0AI%27d%20like%20to%20subscribe%20to%20the%20${plan.name}%20plan%20(${formatAmount(plan.price, plan.currency)}/${plan.period}).%0A%0AThanks!`}
+                  className="mt-4 block"
+                >
+                  <Button
+                    size="lg"
+                    variant={plan.highlighted ? "primary" : "secondary"}
+                    className="w-full"
+                  >
+                    <CreditCard size={15} />
+                    Contact us
+                  </Button>
+                </a>
+              )}
 
               {/* Features */}
               <div className="mt-6 flex-1 space-y-2.5">

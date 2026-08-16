@@ -32,8 +32,8 @@ const links = [
   ["Analytics", "/analytics", Activity],
   ["Integrations", "/integrations", Link2],
   ["PM Memory", "/memory", Sparkles],
-  ["Payments", "/payments", CreditCard],
   ["Reports", "/reports", FileBarChart],
+  ["Payments", "/payments", CreditCard],
   ["Settings", "/settings", Settings],
 ] as const;
 export function AppShell({ children }: { children: React.ReactNode }) {
