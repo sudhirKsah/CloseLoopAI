@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CalendarClock,
   FileText,
@@ -11,10 +11,20 @@ import {
   BarChart3,
   FileBarChart,
   Settings as SettingsIcon,
+  LogOut,
+  Mail,
+  ShieldCheck,
+  Bell,
+  User,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  Send,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useApi } from "@/hooks/use-api";
 import { useWorkspace } from "@/components/workspace-provider";
+import { useAuth } from "@/components/auth-provider";
 import {
   MeetingCreateDialog,
   TaskCreateDialog,
@@ -426,6 +436,7 @@ function ReportsPage() {
 }
 function SettingsPage() {
   const { workspaceId, me, refresh } = useWorkspace();
+  const { logout } = useAuth();
   const toast = useToast();
   const q = useApi<{
     id: string;
@@ -437,6 +448,24 @@ function SettingsPage() {
   const [profileTz, setProfileTz] = useState("");
   const [savingWorkspace, setSavingWorkspace] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [resending, setResending] = useState(false);
+  const DEFAULT_NOTIFS: Record<string, boolean> = {
+    email_task_reminders: true,
+    email_reports: true,
+    email_escalations: true,
+    slack_task_reminders: true,
+    slack_escalations: true,
+  };
+  const [notifPrefs, setNotifPrefs] = useState<Record<string, boolean>>(DEFAULT_NOTIFS);
+  const [savingNotifs, setSavingNotifs] = useState(false);
+
+  // Load notification preferences from me when available
+  useEffect(() => {
+    if (me?.notification_preferences) {
+      setNotifPrefs({ ...DEFAULT_NOTIFS, ...me.notification_preferences });
+    }
+  }, [me?.notification_preferences]);
+
   const saveWorkspace = async () => {
     if (!q.data) return;
     setSavingWorkspace(true);
@@ -475,13 +504,45 @@ function SettingsPage() {
       setSavingProfile(false);
     }
   };
+  const resendVerification = async () => {
+    if (!me?.email) return;
+    setResending(true);
+    try {
+      await api("/auth/resend-verification", {
+        method: "POST",
+        body: JSON.stringify({ email: me.email }),
+      });
+      toast("Verification email sent — check your inbox", "success");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Failed to resend", "error");
+    } finally {
+      setResending(false);
+    }
+  };
+  const saveNotifs = async () => {
+    setSavingNotifs(true);
+    try {
+      await api("/auth/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ notification_preferences: notifPrefs }),
+      });
+      toast("Notification preferences saved", "success");
+      await refresh();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Save failed", "error");
+    } finally {
+      setSavingNotifs(false);
+    }
+  };
+
   if (q.loading)
     return (
       <>
         <Header page="settings" />
-        <div className="max-w-2xl space-y-5">
+        <div className="max-w-3xl space-y-5">
           <Skeleton className="h-40 rounded-2xl" />
           <Skeleton className="h-52 rounded-2xl" />
+          <Skeleton className="h-48 rounded-2xl" />
         </div>
       </>
     );
@@ -496,12 +557,138 @@ function SettingsPage() {
         />
       </>
     );
+
+  const emailVerified = me?.is_email_verified ?? false;
+
   return (
     <>
       <Header page="settings" />
-      <div className="grid gap-5 max-w-2xl">
+      <div className="grid gap-5 max-w-3xl">
+        {/* Account / Email status */}
         <Card className="p-5">
-          <p className="font-medium">Workspace profile</p>
+          <div className="flex items-center gap-2">
+            <ShieldCheck size={18} className="text-emerald-300" />
+            <p className="font-medium">Account &amp; Email</p>
+          </div>
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between rounded-xl border border-white/[.06] bg-white/[.02] px-4 py-3">
+              <div className="flex items-center gap-3">
+                <Mail size={16} className="text-zinc-500" />
+                <div>
+                  <p className="text-sm text-white">{me?.email ?? "—"}</p>
+                  <p className="text-[11px] text-zinc-500">Email address</p>
+                </div>
+              </div>
+              {emailVerified ? (
+                <span className="flex items-center gap-1.5 rounded-full bg-emerald-300/10 px-3 py-1 text-xs font-medium text-emerald-300">
+                  <CheckCircle2 size={13} /> Verified
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 rounded-full bg-amber-400/10 px-3 py-1 text-xs font-medium text-amber-300">
+                  <AlertCircle size={13} /> Unverified
+                </span>
+              )}
+            </div>
+            {!emailVerified && (
+              <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-400/15 bg-amber-400/[.04] px-4 py-3">
+                <p className="text-xs text-amber-200/80">
+                  Verify your email to secure your account and enable email notifications.
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={resending}
+                  onClick={() => void resendVerification()}
+                >
+                  {resending ? "Sending…" : "Resend link"}
+                </Button>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* Profile */}
+        <Card className="p-5">
+          <div className="flex items-center gap-2">
+            <User size={18} className="text-emerald-300" />
+            <p className="font-medium">Your profile</p>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            Update your display name and timezone.
+          </p>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <label className="block text-xs text-zinc-400">
+              Display name
+              <input
+                value={profileName || (me?.name ?? "")}
+                onChange={(e) => setProfileName(e.target.value)}
+                placeholder={me?.name}
+                className="mt-2 h-10 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 text-sm text-white outline-none transition focus:border-emerald-300/60"
+              />
+            </label>
+            <label className="block text-xs text-zinc-400">
+              <span className="flex items-center gap-1"><Clock size={12} /> Timezone</span>
+              <input
+                value={profileTz}
+                onChange={(e) => setProfileTz(e.target.value)}
+                placeholder="America/New_York"
+                className="mt-2 h-10 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 text-sm text-white outline-none transition focus:border-emerald-300/60"
+              />
+            </label>
+          </div>
+          <Button className="mt-5" disabled={savingProfile} onClick={() => void saveProfile()}>
+            {savingProfile ? "Saving…" : "Save profile"}
+          </Button>
+        </Card>
+
+        {/* Notification preferences */}
+        <Card className="p-5">
+          <div className="flex items-center gap-2">
+            <Bell size={18} className="text-emerald-300" />
+            <p className="font-medium">Notifications</p>
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            Choose how you want to be notified about activity.
+          </p>
+          <div className="mt-5 space-y-1">
+            {[
+              ["email_task_reminders", "Email — Task reminders", "Get notified about upcoming and overdue tasks"],
+              ["email_reports", "Email — Weekly reports", "Receive Friday execution summaries"],
+              ["email_escalations", "Email — Escalation alerts", "Be alerted when tasks are at risk"],
+              ["slack_task_reminders", "Slack — Task reminders", "DM reminders for your assigned tasks"],
+              ["slack_escalations", "Slack — Escalation alerts", "DM alerts for at-risk tasks"],
+            ].map(([key, label, desc]) => (
+              <label
+                key={key}
+                className="flex cursor-pointer items-center justify-between rounded-xl px-3 py-2.5 transition hover:bg-white/[.03]"
+              >
+                <div>
+                  <p className="text-sm text-white">{label}</p>
+                  <p className="text-[11px] text-zinc-500">{desc}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setNotifPrefs((p) => ({ ...p, [key]: !p[key] }))}
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition ${notifPrefs[key] ? "bg-emerald-300" : "bg-white/10"}`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${notifPrefs[key] ? "left-[22px]" : "left-0.5"}`}
+                  />
+                </button>
+              </label>
+            ))}
+          </div>
+          <Button className="mt-5" disabled={savingNotifs} onClick={() => void saveNotifs()}>
+            {savingNotifs ? "Saving…" : "Save preferences"}
+          </Button>
+        </Card>
+
+        {/* Workspace */}
+        <Card className="p-5">
+          <div className="flex items-center gap-2">
+            <SettingsIcon size={18} className="text-emerald-300" />
+            <p className="font-medium">Workspace profile</p>
+          </div>
           <label className="mt-5 block text-xs text-zinc-400">
             Workspace name
             <input
@@ -514,33 +701,8 @@ function SettingsPage() {
             {savingWorkspace ? "Saving…" : "Save workspace"}
           </Button>
         </Card>
-        <Card className="p-5">
-          <p className="font-medium">Your profile</p>
-          <p className="mt-1 text-xs text-zinc-500">
-            Update your display name and timezone.
-          </p>
-          <label className="mt-5 block text-xs text-zinc-400">
-            Display name
-            <input
-              value={profileName || (me?.name ?? "")}
-              onChange={(e) => setProfileName(e.target.value)}
-              placeholder={me?.name}
-              className="mt-2 h-10 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 text-sm text-white outline-none transition focus:border-emerald-300/60"
-            />
-          </label>
-          <label className="mt-4 block text-xs text-zinc-400">
-            Timezone
-            <input
-              value={profileTz}
-              onChange={(e) => setProfileTz(e.target.value)}
-              placeholder="America/New_York"
-              className="mt-2 h-10 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 text-sm text-white outline-none transition focus:border-emerald-300/60"
-            />
-          </label>
-          <Button className="mt-5" disabled={savingProfile} onClick={() => void saveProfile()}>
-            {savingProfile ? "Saving…" : "Save profile"}
-          </Button>
-        </Card>
+
+        {/* Automation */}
         <Card className="p-5">
           <p className="font-medium">Automation</p>
           <p className="mt-1 text-xs text-zinc-500">
@@ -555,6 +717,25 @@ function SettingsPage() {
           >
             Configure escalation rules →
           </Link>
+        </Card>
+
+        {/* Danger zone — logout */}
+        <Card className="border-rose-400/15 p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-rose-300">Session</p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Sign out of your CloseLoop account on this device.
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              className="border-rose-400/20 text-rose-300 hover:bg-rose-400/10"
+              onClick={logout}
+            >
+              <LogOut size={15} className="mr-1.5" /> Log out
+            </Button>
+          </div>
         </Card>
       </div>
     </>
