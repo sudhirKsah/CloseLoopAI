@@ -20,6 +20,13 @@ build/
 .next/
 out/
 /.clerk/
+tsconfig.tsbuildinfo
+
+# Celery schedule artifacts
+celerybeat-schedule
+celerybeat-schedule-shm
+celerybeat-schedule-wal
+celerybeat-schedule.db
 
 # Environment / Local Secrets
 .env
