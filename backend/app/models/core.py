@@ -68,6 +68,9 @@ class User(UUIDPrimaryKey, Timestamped, Base):
     is_login_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
+    is_email_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
 
 
 class ExternalIdentity(UUIDPrimaryKey, Timestamped, Base):

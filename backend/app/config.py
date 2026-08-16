@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     smtp_username: str = ""
     smtp_password: str = ""
     smtp_from: str = "noreply@closeloop.ai"
+    support_inbox: str = "support@closeloop.ai"
+    payment_inbox: str = "payment@closeloop.ai"
     reports_dir: str = "/tmp/closeloop-reports"
     clerk_issuer: str = ""
     clerk_audience: str = ""

@@ -57,6 +57,10 @@ class ResetPasswordRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
 class BootstrapRequest(BaseModel):
     display_name: str
     email: EmailStr
@@ -118,11 +122,25 @@ async def signup(
     # Send welcome email if SMTP is configured (non-blocking — don't fail signup)
     if settings.smtp_host:
         try:
-            from ...services.email import send_welcome_email
+            from ...services.email import send_welcome_email, send_verification_email
             send_welcome_email(user.email, user.display_name)
+            # Generate email verification token (24h expiry)
+            now = datetime.datetime.now(datetime.UTC)
+            verify_token = jwt.encode(
+                {
+                    "sub": str(user.id),
+                    "purpose": "email_verification",
+                    "iat": now,
+                    "exp": now + datetime.timedelta(hours=24),
+                },
+                settings.jwt_secret_key,
+                algorithm=settings.jwt_algorithm,
+            )
+            verify_link = f"{settings.frontend_url.rstrip('/')}/verify-email?token={verify_token}"
+            send_verification_email(user.email, user.display_name, verify_link)
         except Exception:
             import logging
-            logging.exception("Failed to send welcome email")
+            logging.exception("Failed to send welcome/verification email")
 
     token = _create_jwt(user.id)
     return {
@@ -242,6 +260,75 @@ async def reset_password(
     return {"reset": True}
 
 
+@router.post("/verify-email")
+async def verify_email(
+    body: VerifyEmailRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Verify an email address using a verification token."""
+    try:
+        payload = jwt.decode(
+            body.token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(400, "Verification link has expired. Please request a new one.")
+    except jwt.PyJWTError:
+        raise HTTPException(400, "Invalid verification token")
+    if payload.get("purpose") != "email_verification":
+        raise HTTPException(400, "Invalid verification token")
+    user = (
+        await session.execute(
+            select(User).where(User.id == payload["sub"])
+        )
+    ).scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "User not found")
+    if not user.is_active:
+        raise HTTPException(403, "Account is disabled")
+    if user.is_email_verified:
+        return {"verified": True, "already": True}
+    user.is_email_verified = True
+    await session.commit()
+    return {"verified": True}
+
+
+@router.post("/resend-verification")
+async def resend_verification(
+    body: ForgotPasswordRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Resend email verification link. Always returns success to avoid leaking registrations."""
+    user = (
+        await session.execute(select(User).where(User.email == body.email))
+    ).scalar_one_or_none()
+    if not user or user.is_email_verified:
+        return {"sent": True}
+
+    if settings.smtp_host:
+        try:
+            from ...services.email import send_verification_email
+            now = datetime.datetime.now(datetime.UTC)
+            verify_token = jwt.encode(
+                {
+                    "sub": str(user.id),
+                    "purpose": "email_verification",
+                    "iat": now,
+                    "exp": now + datetime.timedelta(hours=24),
+                },
+                settings.jwt_secret_key,
+                algorithm=settings.jwt_algorithm,
+            )
+            verify_link = f"{settings.frontend_url.rstrip('/')}/verify-email?token={verify_token}"
+            send_verification_email(user.email, user.display_name, verify_link)
+        except Exception:
+            import logging
+            logging.exception("Failed to resend verification email")
+            raise HTTPException(500, "Failed to send verification email. Please try again.")
+    return {"sent": True}
+
+
 @router.get("/me")
 async def me(
     user: User = Depends(current_user), session: AsyncSession = Depends(get_session)
@@ -257,6 +344,8 @@ async def me(
         "id": str(user.id),
         "email": user.email,
         "name": user.display_name,
+        "is_email_verified": user.is_email_verified,
+        "notification_preferences": user.notification_preferences,
         "workspaces": [
             {
                 "id": str(workspace.id),
