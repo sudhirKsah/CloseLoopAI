@@ -5,11 +5,16 @@ import {
   Bot,
   Calendar,
   CheckCircle2,
+  Check,
+  CreditCard,
+  Crown,
   FileBarChart,
   Github,
   ListChecks,
+  Mail,
   Slack,
   Sparkles,
+  TrendingUp,
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,6 +35,8 @@ export default function Landing() {
             <a href="#how" className="transition hover:text-white">How it works</a>
             <a href="#features" className="transition hover:text-white">Features</a>
             <a href="#integrations" className="transition hover:text-white">Integrations</a>
+            <a href="#pricing" className="transition hover:text-white">Pricing</a>
+            <a href="#contact" className="transition hover:text-white">Contact</a>
           </nav>
           <div className="flex gap-2">
             <Link href="/login">
@@ -330,6 +337,94 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Pricing */}
+      <section id="pricing" className="border-t border-white/[.07] bg-[#0c0c10]">
+        <div className="mx-auto max-w-6xl px-5 py-20">
+          <div className="text-center">
+            <p className="text-[11px] font-medium tracking-[.16em] text-emerald-300">
+              PRICING
+            </p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">
+              Simple, transparent pricing
+            </h2>
+            <p className="mx-auto mt-3 max-w-xl text-zinc-400">
+              Start with a free trial. Upgrade when your team is ready. No hidden fees.
+            </p>
+          </div>
+
+          <div className="mt-12 grid gap-5 lg:grid-cols-3">
+            <PricingCard
+              icon={<Sparkles size={18} />}
+              name="Free Trial"
+              price="Free"
+              period="1 week"
+              tagline="No card needed — try it out"
+              features={[
+                "Full AI PM chat access",
+                "Up to 3 team members",
+                "1 active project",
+                "Slack integration",
+                "Basic team skill tracking",
+                "Email support",
+              ]}
+            />
+            <PricingCard
+              icon={<TrendingUp size={18} />}
+              name="Monthly"
+              price="₹3,000"
+              period="month"
+              tagline="Best for growing teams"
+              highlighted
+              badge="Most Popular"
+              features={[
+                "Up to 10 team members",
+                "5 active projects",
+                "Auto Slack outreach & check-ins",
+                "Deep team skill & strength analysis",
+                "Auto task assignment by skills",
+                "Project kickoff automation",
+                "Priority support (24h response)",
+              ]}
+            />
+            <PricingCard
+              icon={<Crown size={18} />}
+              name="Yearly"
+              price="₹30,000"
+              period="year"
+              tagline="Best value — save ₹6,000"
+              badge="Save 17%"
+              features={[
+                "Unlimited team members",
+                "Unlimited active projects",
+                "Advanced PM analytics & reports",
+                "Custom AI PM personality tuning",
+                "Webhook integrations (Jira, GitHub)",
+                "Dedicated account manager",
+                "24/7 priority support",
+                "Early access to new features",
+              ]}
+            />
+          </div>
+
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-xs text-zinc-600">
+            <span>Accepted payment methods:</span>
+            <span className="rounded-md bg-white/[.04] px-2 py-1">UPI</span>
+            <span className="rounded-md bg-white/[.04] px-2 py-1">Credit Card</span>
+            <span className="rounded-md bg-white/[.04] px-2 py-1">Debit Card</span>
+            <span className="rounded-md bg-white/[.04] px-2 py-1">Netbanking</span>
+            <span className="rounded-md bg-white/[.04] px-2 py-1">International Cards</span>
+          </div>
+
+          <p className="mt-6 text-center text-xs text-zinc-600">
+            Online checkout coming soon.{" "}
+            <a href="mailto:payment@mail.pathayo.com" className="text-emerald-300 hover:underline">
+              Contact us
+            </a>{" "}
+            to subscribe manually.
+          </p>
+        </div>
+      </section>
+
       {/* CTA */}
       <section className="mx-auto max-w-6xl px-5 py-24 text-center">
         <h2 className="text-3xl font-semibold tracking-tight md:text-5xl">
@@ -354,10 +449,88 @@ export default function Landing() {
         </div>
       </section>
 
-      <footer className="border-t border-white/[.06] py-8">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 text-xs text-zinc-600">
-          <span>© 2026 CloseLoop, Inc.</span>
-          <span>Built for the hackathon.</span>
+      {/* Contact */}
+      <section id="contact" className="border-t border-white/[.07] bg-[#0c0c10]">
+        <div className="mx-auto max-w-6xl px-5 py-20">
+          <h2 className="text-3xl font-semibold tracking-tight md:text-4xl">
+            Get in touch
+          </h2>
+          <p className="mt-3 max-w-2xl text-zinc-400">
+            Questions, feedback, or partnership ideas? We respond within 24 hours.
+          </p>
+          <div className="mt-10 grid gap-4 sm:grid-cols-3">
+            <ContactCard
+              icon={<Mail size={18} />}
+              title="General support"
+              email="support@mail.pathayo.com"
+              desc="Account issues, bug reports, how-to questions"
+            />
+            <ContactCard
+              icon={<CreditCard size={18} />}
+              title="Billing & payments"
+              email="payment@mail.pathayo.com"
+              desc="Subscriptions, invoices, plan changes, refunds"
+            />
+            <ContactCard
+              icon={<Sparkles size={18} />}
+              title="Sales & partnerships"
+              email="hello@mail.pathayo.com"
+              desc="Enterprise plans, custom integrations, partnerships"
+            />
+          </div>
+        </div>
+      </section>
+
+      <footer className="border-t border-white/[.06] py-10">
+        <div className="mx-auto max-w-6xl px-5">
+          <div className="grid gap-8 sm:grid-cols-2 md:grid-cols-4">
+            <div>
+              <Link href="/" className="flex items-center gap-2.5 font-semibold">
+                <span className="grid h-8 w-8 place-items-center rounded-[10px] bg-emerald-300 font-black text-zinc-950">
+                  C
+                </span>
+                CloseLoop
+              </Link>
+              <p className="mt-3 text-xs leading-5 text-zinc-600">
+                AI meeting bot + execution tracker. Every decision, tracked to ship.
+              </p>
+            </div>
+            <FooterCol
+              title="Product"
+              links={[
+                ["How it works", "#how"],
+                ["Features", "#features"],
+                ["Integrations", "#integrations"],
+                ["Pricing", "#pricing"],
+              ]}
+            />
+            <FooterCol
+              title="Company"
+              links={[
+                ["Sign up", "/signup"],
+                ["Log in", "/login"],
+                ["Contact", "#contact"],
+              ]}
+            />
+            <div>
+              <p className="text-xs font-medium text-zinc-400">Reach us</p>
+              <div className="mt-3 space-y-1.5">
+                <a href="mailto:support@mail.pathayo.com" className="block text-xs text-zinc-600 transition hover:text-emerald-300">
+                  support@mail.pathayo.com
+                </a>
+                <a href="mailto:payment@mail.pathayo.com" className="block text-xs text-zinc-600 transition hover:text-emerald-300">
+                  payment@mail.pathayo.com
+                </a>
+                <a href="mailto:hello@mail.pathayo.com" className="block text-xs text-zinc-600 transition hover:text-emerald-300">
+                  hello@mail.pathayo.com
+                </a>
+              </div>
+            </div>
+          </div>
+          <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-white/[.06] pt-6 text-xs text-zinc-600 sm:flex-row">
+            <span>© 2026 CloseLoop, Inc. All rights reserved.</span>
+            <span>Powered by pathayo.com</span>
+          </div>
         </div>
       </footer>
     </main>
@@ -499,6 +672,137 @@ function FeatureCard({
       </span>
       <p className="mt-4 font-medium">{title}</p>
       <p className="mt-1.5 text-sm leading-6 text-zinc-500">{desc}</p>
+    </div>
+  );
+}
+
+function ContactCard({
+  icon,
+  title,
+  email,
+  desc,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  email: string;
+  desc: string;
+}) {
+  return (
+    <a
+      href={`mailto:${email}`}
+      className="group rounded-2xl border border-white/[.08] bg-[#111116] p-5 transition hover:border-emerald-300/30 hover:bg-emerald-500/[.03]"
+    >
+      <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-300/10 text-emerald-300 transition group-hover:scale-110">
+        {icon}
+      </span>
+      <p className="mt-4 font-medium">{title}</p>
+      <p className="mt-1 text-sm text-emerald-300/80">{email}</p>
+      <p className="mt-2 text-xs leading-5 text-zinc-500">{desc}</p>
+    </a>
+  );
+}
+
+function FooterCol({
+  title,
+  links,
+}: {
+  title: string;
+  links: [string, string][];
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium text-zinc-400">{title}</p>
+      <div className="mt-3 space-y-2">
+        {links.map(([label, href]) => (
+          <Link
+            key={label}
+            href={href}
+            className="block text-xs text-zinc-600 transition hover:text-emerald-300"
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PricingCard({
+  icon,
+  name,
+  price,
+  period,
+  tagline,
+  features,
+  highlighted,
+  badge,
+}: {
+  icon: React.ReactNode;
+  name: string;
+  price: string;
+  period: string;
+  tagline: string;
+  features: string[];
+  highlighted?: boolean;
+  badge?: string;
+}) {
+  return (
+    <div
+      className={`relative flex flex-col rounded-2xl border p-6 transition ${
+        highlighted
+          ? "border-emerald-400/40 bg-emerald-500/[.04] ring-1 ring-emerald-400/20"
+          : "border-white/[.08] bg-[#111116]"
+      }`}
+    >
+      {badge && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+          <span
+            className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+              highlighted ? "bg-emerald-400 text-zinc-950" : "bg-violet-500/80 text-white"
+            }`}
+          >
+            {badge}
+          </span>
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <span
+          className={`grid size-9 place-items-center rounded-xl ${
+            highlighted ? "bg-emerald-400/15 text-emerald-300" : "bg-white/[.06] text-zinc-300"
+          }`}
+        >
+          {icon}
+        </span>
+        <div>
+          <h3 className="text-lg font-semibold">{name}</h3>
+          <p className="text-[11px] text-zinc-500">{tagline}</p>
+        </div>
+      </div>
+      <div className="mt-5 flex items-baseline gap-1">
+        <span className="text-3xl font-bold">{price}</span>
+        <span className="text-sm text-zinc-500">/{period}</span>
+      </div>
+      <Link href="/signup" className="mt-4 block">
+        <Button
+          size="lg"
+          variant={highlighted ? "primary" : "secondary"}
+          className="w-full"
+        >
+          Get started <ArrowRight size={15} />
+        </Button>
+      </Link>
+      <div className="mt-6 flex-1 space-y-2.5">
+        {features.map((feature, i) => (
+          <div key={i} className="flex items-start gap-2">
+            <Check
+              className={`mt-0.5 size-4 shrink-0 ${
+                highlighted ? "text-emerald-300" : "text-emerald-400"
+              }`}
+            />
+            <span className="text-sm text-zinc-400">{feature}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
