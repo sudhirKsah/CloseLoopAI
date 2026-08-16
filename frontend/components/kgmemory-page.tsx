@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Send,
   TrendingUp,
+  Trash2,
   Users,
   Zap,
 } from "lucide-react";
@@ -146,6 +147,11 @@ type ExecutableAction = {
   result?: string;
 };
 
+const PM_GREETING: ChatMsg = {
+  role: "pm",
+  text: "Hi! I'm your AI PM. I can tell you about your team, help you plan work, or check on progress. What do you want to know?",
+};
+
 function ChatTab({
   workspaceId,
   toast,
@@ -153,17 +159,51 @@ function ChatTab({
   workspaceId: string;
   toast: (m: string, t?: "success" | "error" | "info") => void;
 }) {
-  const [messages, setMessages] = useState<ChatMsg[]>([
-    {
-      role: "pm",
-      text: "Hi! I'm your AI PM. I can tell you about your team, help you plan work, or check on progress. What do you want to know?",
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMsg[]>([PM_GREETING]);
   const [actionState, setActionState] = useState<Record<string, ExecutableAction[]>>({});
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const msgIdCounter = useRef(0);
+
+  // Load persisted chat history on mount so the conversation survives
+  // tab switches and page reloads (like ChatGPT).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const history = await kg.kgListChat(workspaceId);
+        if (cancelled) return;
+        if (history.length === 0) {
+          setMessages([PM_GREETING]);
+          setActionState({});
+        } else {
+          setMessages(
+            history.map((m) => ({
+              role: m.role,
+              text: m.text,
+              id: m.id,
+              actions: (m.actions ?? undefined) as ChatMsg["actions"],
+            })),
+          );
+          const next: Record<string, ExecutableAction[]> = {};
+          for (const m of history) {
+            if (m.id && m.actions && m.actions.length > 0) {
+              next[m.id] = m.actions as ExecutableAction[];
+            }
+          }
+          setActionState(next);
+        }
+      } catch {
+        if (!cancelled) toast("Failed to load chat history", "error");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId, toast]);
 
   const send = async () => {
     const q = input.trim();
@@ -172,6 +212,9 @@ function ChatTab({
     setMessages((m) => [...m, { role: "user", text: q }]);
     setBusy(true);
     try {
+      // Persist the user's message (best-effort; don't block the reply).
+      void kg.kgCreateChat(workspaceId, { role: "user", text: q }).catch(() => {});
+
       const r = await kg.kgDecide(workspaceId, {
         query: q,
         audience: "founder_non_technical",
@@ -180,18 +223,32 @@ function ChatTab({
         (a) => a.action !== "none",
       ) || [];
       const actions = rawActions.map((a) => ({ ...a, status: "pending" as const }));
-      const msgId = `pm-${Date.now()}`;
+
+      // Persist the PM response (with its suggested actions) and use the
+      // server-assigned id to track action execution state.
+      let pmId = `pm-${Date.now()}`;
+      try {
+        const saved = await kg.kgCreateChat(workspaceId, {
+          role: "pm",
+          text: r.response_text || "I couldn't process that right now.",
+          actions: actions.length > 0 ? actions : null,
+        });
+        pmId = saved.id;
+      } catch {
+        toast("Chat history could not be saved", "error");
+      }
+
       setMessages((m) => [
         ...m,
         {
           role: "pm",
           text: r.response_text || "I couldn't process that right now.",
           actions: actions,
-          id: msgId,
+          id: pmId,
         },
       ]);
       if (actions.length > 0) {
-        setActionState((s) => ({ ...s, [msgId]: actions }));
+        setActionState((s) => ({ ...s, [pmId]: actions }));
       }
     } catch {
       setMessages((m) => [
@@ -258,16 +315,18 @@ function ChatTab({
         result = "Action noted";
       }
 
-      setActionState((s) => ({
-        ...s,
-        [msgId]: s[msgId].map((a, i) => i === actionIdx ? { ...a, status: "done", result } : a),
-      }));
+      const updated = actions.map((a, i) =>
+        i === actionIdx ? { ...a, status: "done" as const, result } : a,
+      );
+      setActionState((s) => ({ ...s, [msgId]: updated }));
+      void kg.kgUpdateChatActions(workspaceId, msgId, updated).catch(() => {});
       toast(result, "success");
     } catch {
-      setActionState((s) => ({
-        ...s,
-        [msgId]: s[msgId].map((a, i) => i === actionIdx ? { ...a, status: "error" } : a),
-      }));
+      const updated = actions.map((a, i) =>
+        i === actionIdx ? { ...a, status: "error" as const } : a,
+      );
+      setActionState((s) => ({ ...s, [msgId]: updated }));
+      void kg.kgUpdateChatActions(workspaceId, msgId, updated).catch(() => {});
       toast("Action failed", "error");
     }
   };
@@ -282,84 +341,115 @@ function ChatTab({
     }
   };
 
+  const clearChat = async () => {
+    if (busy || loading) return;
+    try {
+      await kg.kgClearChat(workspaceId);
+    } catch {
+      toast("Failed to clear chat", "error");
+      return;
+    }
+    setMessages([PM_GREETING]);
+    setActionState({});
+    toast("Chat cleared", "info");
+  };
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, actionState]);
 
   return (
     <div className="mx-auto max-w-3xl">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-xs text-zinc-500">Conversation history is saved for you.</p>
+        <button
+          onClick={clearChat}
+          disabled={busy || loading}
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-zinc-400 transition hover:bg-white/[.05] hover:text-zinc-200 disabled:opacity-40"
+        >
+          <Trash2 size={13} /> Clear
+        </button>
+      </div>
       <div
         ref={scrollRef}
         className="h-[60vh] space-y-4 overflow-y-auto rounded-2xl border border-white/[.06] bg-white/[.01] p-4"
       >
-        {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div
-              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
-                m.role === "user"
-                  ? "bg-violet-500/20 text-violet-100"
-                  : "bg-white/[.04] text-zinc-200"
-              }`}
-            >
-              {m.text}
-              {m.actions && m.actions.length > 0 && (
-                <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-zinc-500">
-                      {m.actions.length} action(s) suggested:
-                    </p>
-                    {m.id && actionState[m.id] && actionState[m.id].some((a) => a.status === "pending") && (
-                      <button
-                        onClick={() => executeAll(m.id!)}
-                        className="text-xs font-medium text-violet-300 hover:text-violet-200"
-                      >
-                        Run all
-                      </button>
-                    )}
-                  </div>
-                  {m.actions.map((a, j) => {
-                    const state = m.id ? actionState[m.id]?.[j] : undefined;
-                    const status = state?.status || "pending";
-                    return (
-                      <div key={j} className="rounded-lg border border-white/[.06] bg-white/[.02] p-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-1.5">
-                              <span className={`text-xs font-medium ${
-                                a.urgency === "high" ? "text-red-400" :
-                                a.urgency === "medium" ? "text-amber-400" : "text-emerald-400"
-                              }`}>
-                                {a.urgency.toUpperCase()}
-                              </span>
-                              <span className="text-xs text-zinc-500">{a.action.replace(/_/g, " ")}</span>
-                              {status === "done" && <CheckCircle2 size={11} className="text-emerald-400" />}
-                              {status === "running" && <RefreshCw size={11} className="text-zinc-400 animate-spin" />}
-                              {status === "error" && <AlertTriangle size={11} className="text-red-400" />}
-                            </div>
-                            <p className="mt-1 text-xs text-zinc-300">
-                              {a.message}
-                            </p>
-                            {state?.result && (
-                              <p className="mt-1 text-xs text-emerald-400">{state.result}</p>
-                            )}
-                          </div>
-                          {status === "pending" && (
-                            <button
-                              onClick={() => executeAction(m.id!, j)}
-                              className="shrink-0 rounded-md bg-violet-500/20 px-2 py-1 text-xs font-medium text-violet-200 hover:bg-violet-500/30"
-                            >
-                              Run
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+        {loading ? (
+          <div className="flex justify-start">
+            <div className="rounded-2xl bg-white/[.04] px-4 py-2.5 text-sm text-zinc-400">
+              <RefreshCw size={14} className="inline animate-spin" /> Loading chat...
             </div>
           </div>
-        ))}
+        ) : (
+          messages.map((m, i) => (
+            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
+                  m.role === "user"
+                    ? "bg-violet-500/20 text-violet-100"
+                    : "bg-white/[.04] text-zinc-200"
+                }`}
+              >
+                {m.text}
+                {m.actions && m.actions.length > 0 && (
+                  <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-zinc-500">
+                        {m.actions.length} action(s) suggested:
+                      </p>
+                      {m.id && actionState[m.id] && actionState[m.id].some((a) => a.status === "pending") && (
+                        <button
+                          onClick={() => executeAll(m.id!)}
+                          className="text-xs font-medium text-violet-300 hover:text-violet-200"
+                        >
+                          Run all
+                        </button>
+                      )}
+                    </div>
+                    {m.actions.map((a, j) => {
+                      const state = m.id ? actionState[m.id]?.[j] : undefined;
+                      const status = state?.status || "pending";
+                      return (
+                        <div key={j} className="rounded-lg border border-white/[.06] bg-white/[.02] p-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-xs font-medium ${
+                                  a.urgency === "high" ? "text-red-400" :
+                                  a.urgency === "medium" ? "text-amber-400" : "text-emerald-400"
+                                }`}>
+                                  {a.urgency.toUpperCase()}
+                                </span>
+                                <span className="text-xs text-zinc-500">{a.action.replace(/_/g, " ")}</span>
+                                {status === "done" && <CheckCircle2 size={11} className="text-emerald-400" />}
+                                {status === "running" && <RefreshCw size={11} className="text-zinc-400 animate-spin" />}
+                                {status === "error" && <AlertTriangle size={11} className="text-red-400" />}
+                              </div>
+                              <p className="mt-1 text-xs text-zinc-300">
+                                {a.message}
+                              </p>
+                              {state?.result && (
+                                <p className="mt-1 text-xs text-emerald-400">{state.result}</p>
+                              )}
+                            </div>
+                            {status === "pending" && (
+                              <button
+                                onClick={() => executeAction(m.id!, j)}
+                                className="shrink-0 rounded-md bg-violet-500/20 px-2 py-1 text-xs font-medium text-violet-200 hover:bg-violet-500/30"
+                              >
+                                Run
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))
+        )}
         {busy && (
           <div className="flex justify-start">
             <div className="rounded-2xl bg-white/[.04] px-4 py-2.5 text-sm text-zinc-400">

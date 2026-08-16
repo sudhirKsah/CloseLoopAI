@@ -4,4 +4,6 @@ from .work import Decision, Task, TaskActivityMatch, TaskCandidate, TaskComment,
 from .integrations import CalendarEvent, ExternalTaskMapping, GithubActivity, GithubRepo, Integration, OAuthCredential, OAuthState
 from .operations import AuditLog, Escalation, EscalationRule, Insight, Notification, Reminder, WeeklyReport
 from .webhooks import WebhookEvent
-__all__ = ["Organization", "Workspace", "User", "ExternalIdentity", "WorkspaceMember", "Meeting", "MeetingParticipant", "Transcript", "TranscriptChunk", "MeetingExtraction", "Speaker", "Decision", "Task", "TaskCandidate", "TaskDependency", "TaskComment", "TaskStatusHistory", "Integration", "GithubRepo", "GithubActivity", "CalendarEvent", "ExternalTaskMapping", "OAuthState", "Reminder", "Escalation", "WeeklyReport", "Insight", "AuditLog", "Notification", "OAuthCredential", "WebhookEvent"]
+from .pm_chat import PmChatMessage
+from .payment import Payment, PaymentOrder
+__all__ = ["Organization", "Workspace", "User", "ExternalIdentity", "WorkspaceMember", "Meeting", "MeetingParticipant", "Transcript", "TranscriptChunk", "MeetingExtraction", "Speaker", "Decision", "Task", "TaskCandidate", "TaskDependency", "TaskComment", "TaskStatusHistory", "Integration", "GithubRepo", "GithubActivity", "CalendarEvent", "ExternalTaskMapping", "OAuthState", "Reminder", "Escalation", "WeeklyReport", "Insight", "AuditLog", "Notification", "OAuthCredential", "WebhookEvent", "PmChatMessage", "Payment", "PaymentOrder"]
