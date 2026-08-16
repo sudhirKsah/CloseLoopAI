@@ -11,7 +11,6 @@ import {
   MessageSquare,
   RefreshCw,
   Send,
-  Target,
   TrendingUp,
   Users,
   Zap,
@@ -24,13 +23,12 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import * as kg from "@/lib/kgmemory";
 
-type Tab = "chat" | "team" | "projects" | "actions";
+type Tab = "chat" | "team" | "actions";
 
 const TABS: { id: Tab; label: string; icon: typeof Brain; desc: string }[] = [
   { id: "chat", label: "Chat with PM", icon: MessageSquare, desc: "Ask your AI PM anything" },
   { id: "team", label: "Team", icon: Users, desc: "Profiles, onboarding, check-ins" },
-  { id: "projects", label: "Projects", icon: Target, desc: "Tasks, assignments, progress" },
-  { id: "actions", label: "Actions", icon: Activity, desc: "Alerts, tasks, and PM suggestions" },
+  { id: "actions", label: "Actions", icon: Activity, desc: "Alerts and pending PM actions" },
 ];
 
 export function KgMemoryPage() {
@@ -85,7 +83,6 @@ export function KgMemoryPage() {
     <Layout activeTab={tab} onTabChange={setTab}>
       {tab === "chat" && <ChatTab workspaceId={workspaceId} toast={toast} />}
       {tab === "team" && <TeamTab workspaceId={workspaceId} toast={toast} />}
-      {tab === "projects" && <ProjectsTab workspaceId={workspaceId} toast={toast} />}
       {tab === "actions" && <ActionsTab workspaceId={workspaceId} toast={toast} />}
     </Layout>
   );
@@ -99,8 +96,8 @@ function Layout({
   onTabChange,
 }: {
   children: React.ReactNode;
-  activeTab: Tab;
-  onTabChange: (t: Tab) => void;
+  activeTab?: Tab;
+  onTabChange?: (t: Tab) => void;
 }) {
   return (
     <main className="p-5 lg:p-8">
@@ -111,22 +108,24 @@ function Layout({
         Your AI PM talks to the team on Slack, tracks progress, and helps you
         make decisions.
       </p>
-      <div className="mt-6 flex gap-1 rounded-xl border border-white/[.06] bg-white/[.02] p-1">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => onTabChange(t.id)}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
-              activeTab === t.id
-                ? "bg-violet-500/20 text-violet-200"
-                : "text-zinc-400 hover:text-zinc-200"
-            }`}
-          >
-            <t.icon size={15} />
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {activeTab && onTabChange && (
+        <div className="mt-6 flex gap-1 rounded-xl border border-white/[.06] bg-white/[.02] p-1">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => onTabChange(t.id)}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+                activeTab === t.id
+                  ? "bg-violet-500/20 text-violet-200"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              <t.icon size={15} />
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="mt-6">{children}</div>
     </main>
   );
@@ -250,7 +249,7 @@ function ChatTab({
           "How is my team doing?",
           "Who is available for new work?",
           "What should I be worried about?",
-          "Split work for the team",
+          "Give me a progress update",
         ].map((s) => (
           <button
             key={s}
@@ -486,7 +485,6 @@ function ProfileFacts({ facts }: { facts: Record<string, unknown>[] }) {
     identity: { label: "Role", icon: Users, color: "text-emerald-400", items: [] },
     experience: { label: "Experience", icon: TrendingUp, color: "text-cyan-400", items: [] },
     skill: { label: "Skills & Tech", icon: Zap, color: "text-blue-400", items: [] },
-    project: { label: "Projects", icon: Target, color: "text-orange-400", items: [] },
     availability: { label: "Availability", icon: Clock, color: "text-amber-400", items: [] },
     preference: { label: "Interests", icon: Brain, color: "text-purple-400", items: [] },
     work_style: { label: "Work Style", icon: MessageSquare, color: "text-pink-400", items: [] },
@@ -573,134 +571,6 @@ function InfoBox({
         <p className="text-xs uppercase tracking-wider text-zinc-500">{label}</p>
       </div>
       <p className="mt-1 text-sm">{children}</p>
-    </div>
-  );
-}
-
-// ── Projects Tab ──────────────────────────────────────────────────────────
-
-function ProjectsTab({
-  workspaceId,
-  toast,
-}: {
-  workspaceId: string;
-  toast: (m: string, t?: "success" | "error" | "info") => void;
-}) {
-  const [projects, setProjects] = useState<kg.KgProject[]>([]);
-  const [tasks, setTasks] = useState<kg.KgTask[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const [p, t] = await Promise.all([
-        kg.kgListProjects(workspaceId),
-        kg.kgListTasks(workspaceId),
-      ]);
-      setProjects(p);
-      setTasks(t);
-    } catch {
-      toast("Failed to load projects", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
-
-  const autoAssign = async (taskId: string) => {
-    setBusy(true);
-    try {
-      await kg.kgAutoAssignTask(workspaceId, taskId);
-      toast("Task auto-assigned", "success");
-      void load();
-    } catch {
-      toast("Auto-assign failed", "error");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (loading) {
-    return <Skeleton className="h-32 rounded-xl" />;
-  }
-
-  if (projects.length === 0) {
-    return (
-      <Card className="p-8 text-center">
-        <Target className="mx-auto size-8 text-zinc-600" />
-        <p className="mt-3 text-sm text-zinc-500">No projects yet.</p>
-        <p className="mt-1 text-xs text-zinc-600">
-          Ask the PM in the Chat tab to help plan and split work.
-        </p>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {projects.map((p) => {
-        const projectTasks = tasks.filter((t) => t.project === p.name);
-        return (
-          <Card key={p.name} className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold">{p.name}</p>
-                {p.description && (
-                  <p className="mt-0.5 text-xs text-zinc-500">{p.description}</p>
-                )}
-              </div>
-              <Badge variant={p.status === "active" ? "success" : "default"}>
-                {p.status}
-              </Badge>
-            </div>
-            <div className="mt-3 flex gap-4 text-xs text-zinc-500">
-              <span>{p.task_count} tasks</span>
-              <span>{p.open_task_count} open</span>
-              <span>{p.member_count} members</span>
-              {p.deadline && <span>Due: {p.deadline}</span>}
-            </div>
-            {projectTasks.length > 0 && (
-              <div className="mt-4 space-y-2">
-                {projectTasks.map((t) => (
-                  <div
-                    key={t.task_id}
-                    className="flex items-center justify-between rounded-lg border border-white/[.04] bg-white/[.01] px-3 py-2"
-                  >
-                    <div>
-                      <p className="text-sm text-zinc-200">
-                        {t.title || t.task_id}
-                      </p>
-                      <p className="text-xs text-zinc-500">
-                        {t.assignee ? `Assigned: ${t.assignee}` : "Unassigned"}
-                        {t.required_skills.length > 0 && ` · Needs: ${t.required_skills.join(", ")}`}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={t.status === "done" ? "success" : "default"}>
-                        {t.status}
-                      </Badge>
-                      {t.assignee === null && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => autoAssign(t.task_id)}
-                          disabled={busy}
-                        >
-                          Auto-assign
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-        );
-      })}
     </div>
   );
 }
