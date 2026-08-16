@@ -23,11 +23,12 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import * as kg from "@/lib/kgmemory";
 
-type Tab = "chat" | "team" | "actions";
+type Tab = "chat" | "team" | "jira" | "actions";
 
 const TABS: { id: Tab; label: string; icon: typeof Brain; desc: string }[] = [
   { id: "chat", label: "Chat with PM", icon: MessageSquare, desc: "Ask your AI PM anything" },
   { id: "team", label: "Team", icon: Users, desc: "Profiles, onboarding, check-ins" },
+  { id: "jira", label: "Jira", icon: ListChecks, desc: "Issues synced from Jira" },
   { id: "actions", label: "Actions", icon: Activity, desc: "Alerts and pending PM actions" },
 ];
 
@@ -83,6 +84,7 @@ export function KgMemoryPage() {
     <Layout activeTab={tab} onTabChange={setTab}>
       {tab === "chat" && <ChatTab workspaceId={workspaceId} toast={toast} />}
       {tab === "team" && <TeamTab workspaceId={workspaceId} toast={toast} />}
+      {tab === "jira" && <JiraTab workspaceId={workspaceId} toast={toast} />}
       {tab === "actions" && <ActionsTab workspaceId={workspaceId} toast={toast} />}
     </Layout>
   );
@@ -133,7 +135,7 @@ function Layout({
 
 // ── Chat Tab ──────────────────────────────────────────────────────────────
 
-type ChatMsg = { role: "user" | "pm"; text: string; actions?: { action: string; target: string; message: string; urgency: string }[] };
+type ChatMsg = { role: "user" | "pm"; text: string; id?: string; actions?: { action: string; target: string; message: string; urgency: string }[] };
 
 type ExecutableAction = {
   action: string;
@@ -157,10 +159,11 @@ function ChatTab({
       text: "Hi! I'm your AI PM. I can tell you about your team, help you plan work, or check on progress. What do you want to know?",
     },
   ]);
-  const [actionState, setActionState] = useState<Record<number, ExecutableAction[]>>({});
+  const [actionState, setActionState] = useState<Record<string, ExecutableAction[]>>({});
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const msgIdCounter = useRef(0);
 
   const send = async () => {
     const q = input.trim();
@@ -177,16 +180,18 @@ function ChatTab({
         (a) => a.action !== "none",
       ) || [];
       const actions = rawActions.map((a) => ({ ...a, status: "pending" as const }));
+      const msgId = `pm-${Date.now()}`;
       setMessages((m) => [
         ...m,
         {
           role: "pm",
           text: r.response_text || "I couldn't process that right now.",
           actions: actions,
+          id: msgId,
         },
       ]);
       if (actions.length > 0) {
-        setActionState((s) => ({ ...s, [messages.length]: actions }));
+        setActionState((s) => ({ ...s, [msgId]: actions }));
       }
     } catch {
       setMessages((m) => [
@@ -199,14 +204,14 @@ function ChatTab({
     }
   };
 
-  const executeAction = async (msgIdx: number, actionIdx: number) => {
-    const actions = actionState[msgIdx];
+  const executeAction = async (msgId: string, actionIdx: number) => {
+    const actions = actionState[msgId];
     if (!actions || !actions[actionIdx]) return;
     const action = actions[actionIdx];
 
     setActionState((s) => ({
       ...s,
-      [msgIdx]: s[msgIdx].map((a, i) => i === actionIdx ? { ...a, status: "running" } : a),
+      [msgId]: s[msgId].map((a, i) => i === actionIdx ? { ...a, status: "running" } : a),
     }));
 
     try {
@@ -222,7 +227,19 @@ function ChatTab({
           project: projectName,
           required_skills: skills,
         });
-        result = `Task "${title}" created in ${projectName}`;
+        // Also create a Jira issue if connected
+        try {
+          const integrations = await kg.listIntegrations(workspaceId);
+          const jira = integrations.find((i) => i.provider === "jira" && i.state === "connected");
+          if (jira) {
+            await kg.createJiraIssue(jira.id, title, action.message);
+            result = `Task "${title}" created in ${projectName} and synced to Jira`;
+          } else {
+            result = `Task "${title}" created in ${projectName}`;
+          }
+        } catch {
+          result = `Task "${title}" created in ${projectName}`;
+        }
       } else if (action.action === "assign_task") {
         result = "Assignment suggested — see Team tab";
       } else if (action.action === "check_in_engineer") {
@@ -243,24 +260,24 @@ function ChatTab({
 
       setActionState((s) => ({
         ...s,
-        [msgIdx]: s[msgIdx].map((a, i) => i === actionIdx ? { ...a, status: "done", result } : a),
+        [msgId]: s[msgId].map((a, i) => i === actionIdx ? { ...a, status: "done", result } : a),
       }));
       toast(result, "success");
     } catch {
       setActionState((s) => ({
         ...s,
-        [msgIdx]: s[msgIdx].map((a, i) => i === actionIdx ? { ...a, status: "error" } : a),
+        [msgId]: s[msgId].map((a, i) => i === actionIdx ? { ...a, status: "error" } : a),
       }));
       toast("Action failed", "error");
     }
   };
 
-  const executeAll = async (msgIdx: number) => {
-    const actions = actionState[msgIdx];
+  const executeAll = async (msgId: string) => {
+    const actions = actionState[msgId];
     if (!actions) return;
     for (let i = 0; i < actions.length; i++) {
       if (actions[i].status === "pending") {
-        await executeAction(msgIdx, i);
+        await executeAction(msgId, i);
       }
     }
   };
@@ -291,9 +308,9 @@ function ChatTab({
                     <p className="text-xs text-zinc-500">
                       {m.actions.length} action(s) suggested:
                     </p>
-                    {actionState[i] && actionState[i].some((a) => a.status === "pending") && (
+                    {m.id && actionState[m.id] && actionState[m.id].some((a) => a.status === "pending") && (
                       <button
-                        onClick={() => executeAll(i)}
+                        onClick={() => executeAll(m.id!)}
                         className="text-xs font-medium text-violet-300 hover:text-violet-200"
                       >
                         Run all
@@ -301,7 +318,7 @@ function ChatTab({
                     )}
                   </div>
                   {m.actions.map((a, j) => {
-                    const state = actionState[i]?.[j];
+                    const state = m.id ? actionState[m.id]?.[j] : undefined;
                     const status = state?.status || "pending";
                     return (
                       <div key={j} className="rounded-lg border border-white/[.06] bg-white/[.02] p-2">
@@ -328,7 +345,7 @@ function ChatTab({
                           </div>
                           {status === "pending" && (
                             <button
-                              onClick={() => executeAction(i, j)}
+                              onClick={() => executeAction(m.id!, j)}
                               className="shrink-0 rounded-md bg-violet-500/20 px-2 py-1 text-xs font-medium text-violet-200 hover:bg-violet-500/30"
                             >
                               Run
@@ -691,6 +708,147 @@ function InfoBox({
         <p className="text-xs uppercase tracking-wider text-zinc-500">{label}</p>
       </div>
       <p className="mt-1 text-sm">{children}</p>
+    </div>
+  );
+}
+
+// ── Jira Tab ──────────────────────────────────────────────────────────────
+
+function JiraTab({
+  workspaceId,
+  toast,
+}: {
+  workspaceId: string;
+  toast: (m: string, t?: "success" | "error" | "info") => void;
+}) {
+  const [issues, setIssues] = useState<kg.JiraIssue[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [integrationId, setIntegrationId] = useState<string | null>(null);
+  const [projectKey, setProjectKey] = useState<string>("");
+  const [busy, setBusy] = useState(false);
+  const [newSummary, setNewSummary] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const integrations = await kg.listIntegrations(workspaceId);
+      const jira = integrations.find((i) => i.provider === "jira" && i.state === "connected");
+      if (!jira) {
+        setIntegrationId(null);
+        return;
+      }
+      setIntegrationId(jira.id);
+      const result = await kg.listJiraIssues(jira.id);
+      setIssues(result.issues);
+      setProjectKey(result.project_key);
+    } catch {
+      toast("Failed to load Jira issues", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const createIssue = async () => {
+    if (!integrationId || !newSummary.trim()) return;
+    setBusy(true);
+    try {
+      await kg.createJiraIssue(integrationId, newSummary.trim(), "");
+      toast("Jira issue created", "success");
+      setNewSummary("");
+      void load();
+    } catch {
+      toast("Failed to create issue", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading) {
+    return <Skeleton className="h-32 rounded-xl" />;
+  }
+
+  if (!integrationId) {
+    return (
+      <Card className="p-8 text-center">
+        <ListChecks className="mx-auto size-8 text-zinc-600" />
+        <p className="mt-3 text-sm text-zinc-500">Jira not connected.</p>
+        <p className="mt-1 text-xs text-zinc-600">
+          Connect Jira from the Integrations page to see issues here.
+        </p>
+      </Card>
+    );
+  }
+
+  const statusColor = (status: string) => {
+    const s = status.toLowerCase();
+    if (s.includes("done") || s.includes("closed") || s.includes("complete")) return "success";
+    if (s.includes("progress") || s.includes("review")) return "warning";
+    if (s.includes("blocked") || s.includes("backlog")) return "default";
+    return "default";
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium">{projectKey} issues</p>
+          <p className="text-xs text-zinc-500">{issues.length} issues from Jira</p>
+        </div>
+        <Button onClick={load} disabled={loading} size="sm" variant="ghost">
+          <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
+        </Button>
+      </div>
+
+      {/* Create new issue */}
+      <div className="flex gap-2">
+        <input
+          className="flex-1 rounded-lg border border-white/10 bg-white/[.04] px-3 py-2 text-sm text-white outline-none focus:border-violet-400/60"
+          value={newSummary}
+          onChange={(e) => setNewSummary(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && createIssue()}
+          placeholder="New issue summary..."
+          disabled={busy}
+        />
+        <Button onClick={createIssue} disabled={busy || !newSummary.trim()} size="sm">
+          <Send size={13} /> Create
+        </Button>
+      </div>
+
+      {issues.length === 0 ? (
+        <Card className="p-8 text-center">
+          <ListChecks className="mx-auto size-8 text-zinc-600" />
+          <p className="mt-3 text-sm text-zinc-500">No issues in this project yet.</p>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {issues.map((issue) => (
+            <Card key={issue.id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs text-violet-300">{issue.key}</span>
+                    <Badge variant={statusColor(issue.status) as "success" | "warning" | "default" | "danger"}>
+                      {issue.status}
+                    </Badge>
+                    {issue.priority !== "None" && (
+                      <span className="text-xs text-zinc-500">{issue.priority}</span>
+                    )}
+                  </div>
+                  <p className="mt-1.5 text-sm text-zinc-200">{issue.summary}</p>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {issue.assignee !== "Unassigned" ? issue.assignee : "Unassigned"}
+                    {issue.updated && ` · Updated ${new Date(issue.updated).toLocaleDateString()}`}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

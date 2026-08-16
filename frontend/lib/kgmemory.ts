@@ -512,3 +512,47 @@ export async function kgAutoCheckIn(workspaceId: string) {
     { method: "POST" },
   );
 }
+
+// jira integration
+export type JiraIssue = {
+  id: string;
+  key: string;
+  summary: string;
+  status: string;
+  status_category: string;
+  priority: string;
+  assignee: string;
+  assignee_email: string | null;
+  created: string;
+  updated: string;
+};
+
+export async function listJiraIssues(integrationId: string) {
+  return api<{ issues: JiraIssue[]; project_key: string }>(
+    `/integrations/jira/${integrationId}/issues`,
+  );
+}
+
+export async function createJiraIssue(
+  integrationId: string,
+  summary: string,
+  description: string,
+) {
+  const qs = `?summary=${encodeURIComponent(summary)}&description=${encodeURIComponent(description)}`;
+  return api<{ issue: Record<string, unknown> }>(
+    `/integrations/jira/${integrationId}/issues${qs}`,
+    { method: "POST" },
+  );
+}
+
+// integrations list (to find jira integration id)
+export type Integration = {
+  id: string;
+  provider: string;
+  state: string;
+  config: Record<string, unknown>;
+};
+
+export async function listIntegrations(workspaceId: string) {
+  return api<Integration[]>(`/workspaces/${workspaceId}/integrations`);
+}
