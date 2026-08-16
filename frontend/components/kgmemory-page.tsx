@@ -135,6 +135,15 @@ function Layout({
 
 type ChatMsg = { role: "user" | "pm"; text: string; actions?: { action: string; target: string; message: string; urgency: string }[] };
 
+type ExecutableAction = {
+  action: string;
+  target: string;
+  message: string;
+  urgency: string;
+  status?: "pending" | "running" | "done" | "error";
+  result?: string;
+};
+
 function ChatTab({
   workspaceId,
   toast,
@@ -148,6 +157,7 @@ function ChatTab({
       text: "Hi! I'm your AI PM. I can tell you about your team, help you plan work, or check on progress. What do you want to know?",
     },
   ]);
+  const [actionState, setActionState] = useState<Record<number, ExecutableAction[]>>({});
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -163,16 +173,21 @@ function ChatTab({
         query: q,
         audience: "founder_non_technical",
       });
+      const rawActions = (r.suggested_actions as ExecutableAction[])?.filter(
+        (a) => a.action !== "none",
+      ) || [];
+      const actions = rawActions.map((a) => ({ ...a, status: "pending" as const }));
       setMessages((m) => [
         ...m,
         {
           role: "pm",
           text: r.response_text || "I couldn't process that right now.",
-          actions: (r.suggested_actions as ChatMsg["actions"])?.filter(
-            (a) => a.action !== "none",
-          ),
+          actions: actions,
         },
       ]);
+      if (actions.length > 0) {
+        setActionState((s) => ({ ...s, [messages.length]: actions }));
+      }
     } catch {
       setMessages((m) => [
         ...m,
@@ -184,9 +199,75 @@ function ChatTab({
     }
   };
 
+  const executeAction = async (msgIdx: number, actionIdx: number) => {
+    const actions = actionState[msgIdx];
+    if (!actions || !actions[actionIdx]) return;
+    const action = actions[actionIdx];
+
+    setActionState((s) => ({
+      ...s,
+      [msgIdx]: s[msgIdx].map((a, i) => i === actionIdx ? { ...a, status: "running" } : a),
+    }));
+
+    try {
+      let result = "";
+      if (action.action === "create_task") {
+        const projectName = action.target || "general";
+        const taskMatch = action.message.match(/task[:\s]+(.+)/i);
+        const title = taskMatch ? taskMatch[1] : action.message;
+        const skillsMatch = action.message.match(/skills?[:\s]+(.+)/i);
+        const skills = skillsMatch ? skillsMatch[1].split(/[,;]/).map((s: string) => s.trim()) : [];
+        await kg.kgCreateTask(workspaceId, {
+          title,
+          project: projectName,
+          required_skills: skills,
+        });
+        result = `Task "${title}" created in ${projectName}`;
+      } else if (action.action === "assign_task") {
+        result = "Assignment suggested — see Team tab";
+      } else if (action.action === "check_in_engineer") {
+        const person = action.target;
+        await kg.kgCheckIn(workspaceId, person);
+        result = `Check-in sent to ${person} on Slack`;
+      } else if (action.action === "onboard") {
+        const person = action.target;
+        await kg.kgAutoOnboard(workspaceId);
+        result = `Onboarding started for ${person}`;
+      } else if (action.action === "ping") {
+        const person = action.target;
+        await kg.kgCheckIn(workspaceId, person);
+        result = `Pinged ${person} on Slack`;
+      } else {
+        result = "Action noted";
+      }
+
+      setActionState((s) => ({
+        ...s,
+        [msgIdx]: s[msgIdx].map((a, i) => i === actionIdx ? { ...a, status: "done", result } : a),
+      }));
+      toast(result, "success");
+    } catch {
+      setActionState((s) => ({
+        ...s,
+        [msgIdx]: s[msgIdx].map((a, i) => i === actionIdx ? { ...a, status: "error" } : a),
+      }));
+      toast("Action failed", "error");
+    }
+  };
+
+  const executeAll = async (msgIdx: number) => {
+    const actions = actionState[msgIdx];
+    if (!actions) return;
+    for (let i = 0; i < actions.length; i++) {
+      if (actions[i].status === "pending") {
+        await executeAction(msgIdx, i);
+      }
+    }
+  };
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  }, [messages, actionState]);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -197,7 +278,7 @@ function ChatTab({
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
             <div
-              className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
+              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
                 m.role === "user"
                   ? "bg-violet-500/20 text-violet-100"
                   : "bg-white/[.04] text-zinc-200"
@@ -205,19 +286,58 @@ function ChatTab({
             >
               {m.text}
               {m.actions && m.actions.length > 0 && (
-                <div className="mt-2 space-y-1 border-t border-white/10 pt-2">
-                  <p className="text-xs text-zinc-500">Suggested actions:</p>
-                  {m.actions.map((a, j) => (
-                    <div key={j} className="text-xs text-zinc-400">
-                      <span className={`font-medium ${
-                        a.urgency === "high" ? "text-red-400" :
-                        a.urgency === "medium" ? "text-amber-400" : "text-emerald-400"
-                      }`}>
-                        {a.urgency.toUpperCase()}
-                      </span>{" "}
-                      — {a.action}: {a.message}
-                    </div>
-                  ))}
+                <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-zinc-500">
+                      {m.actions.length} action(s) suggested:
+                    </p>
+                    {actionState[i] && actionState[i].some((a) => a.status === "pending") && (
+                      <button
+                        onClick={() => executeAll(i)}
+                        className="text-xs font-medium text-violet-300 hover:text-violet-200"
+                      >
+                        Run all
+                      </button>
+                    )}
+                  </div>
+                  {m.actions.map((a, j) => {
+                    const state = actionState[i]?.[j];
+                    const status = state?.status || "pending";
+                    return (
+                      <div key={j} className="rounded-lg border border-white/[.06] bg-white/[.02] p-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-xs font-medium ${
+                                a.urgency === "high" ? "text-red-400" :
+                                a.urgency === "medium" ? "text-amber-400" : "text-emerald-400"
+                              }`}>
+                                {a.urgency.toUpperCase()}
+                              </span>
+                              <span className="text-xs text-zinc-500">{a.action.replace(/_/g, " ")}</span>
+                              {status === "done" && <CheckCircle2 size={11} className="text-emerald-400" />}
+                              {status === "running" && <RefreshCw size={11} className="text-zinc-400 animate-spin" />}
+                              {status === "error" && <AlertTriangle size={11} className="text-red-400" />}
+                            </div>
+                            <p className="mt-1 text-xs text-zinc-300">
+                              {a.message}
+                            </p>
+                            {state?.result && (
+                              <p className="mt-1 text-xs text-emerald-400">{state.result}</p>
+                            )}
+                          </div>
+                          {status === "pending" && (
+                            <button
+                              onClick={() => executeAction(i, j)}
+                              className="shrink-0 rounded-md bg-violet-500/20 px-2 py-1 text-xs font-medium text-violet-200 hover:bg-violet-500/30"
+                            >
+                              Run
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -237,7 +357,7 @@ function ChatTab({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder="Ask about your team, projects, or what to do next..."
+          placeholder="Ask about your team, plan a project, or check progress..."
           disabled={busy}
         />
         <Button onClick={send} disabled={busy || !input.trim()}>
@@ -247,9 +367,9 @@ function ChatTab({
       <div className="mt-3 flex flex-wrap gap-2">
         {[
           "How is my team doing?",
+          "I want to build a new app",
           "Who is available for new work?",
-          "What should I be worried about?",
-          "Give me a progress update",
+          "Plan the next sprint",
         ].map((s) => (
           <button
             key={s}

@@ -247,6 +247,39 @@ export async function kgListTasks(workspaceId: string, project?: string) {
   return api<KgTask[]>(`${base(workspaceId)}/projects/tasks${qs}`);
 }
 
+export async function kgCreateProject(workspaceId: string, body: {
+  name: string;
+  description?: string;
+  status?: string;
+  deadline?: string;
+}) {
+  return api<KgProject>(`${base(workspaceId)}/projects`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function kgCreateTask(workspaceId: string, body: {
+  title: string;
+  description?: string;
+  project: string;
+  required_skills?: string[];
+  estimated_days?: number;
+  deadline?: string;
+}) {
+  return api<KgTask>(`${base(workspaceId)}/projects/tasks`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function kgAssignTask(workspaceId: string, taskId: string, person: string) {
+  return api<KgTask>(
+    `${base(workspaceId)}/projects/tasks/${taskId}/assign?person=${encodeURIComponent(person)}`,
+    { method: "POST" },
+  );
+}
+
 export async function kgAssignmentRecommendations(workspaceId: string, taskId: string) {
   return api<{ task: KgTask; recommendations: Record<string, unknown>[] }>(
     `${base(workspaceId)}/projects/tasks/${taskId}/recommendations`,
