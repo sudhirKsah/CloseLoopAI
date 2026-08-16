@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     meeting_extraction_model: str = "gpt-5.6"
     cerebras_api_key: str = ""
     cerebras_model: str = "gpt-oss-120b"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-flash-latest"
     task_auto_approve_confidence: float = 0.85
     credential_encryption_key: str = ""
     slack_signing_secret: str = ""

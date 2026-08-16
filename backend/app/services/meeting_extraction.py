@@ -147,46 +147,131 @@ class CerebrasExtractionProvider(MeetingExtractionProvider):
             ) from error
 
 
+class GeminiExtractionProvider(MeetingExtractionProvider):
+    """Google Gemini via OpenAI-compatible endpoint.
+
+    Uses the free-tier Gemini API (generativelanguage.googleapis.com) which
+    satisfies the Build with Gemini XPRIZE requirement for Google Cloud usage.
+    No additional package needed — the `openai` SDK works with Gemini's
+    OpenAI-compatible API.
+    """
+
+    async def extract(self, chunks: list[ChunkInput]) -> MeetingExtractionResult:
+        client = AsyncOpenAI(
+            api_key=settings.gemini_api_key,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        )
+        response = await client.chat.completions.create(
+            model=settings.gemini_model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": transcript_prompt(chunks)},
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "meeting_extraction",
+                    "strict": True,
+                    "schema": _strict_schema(
+                        MeetingExtractionResult.model_json_schema()
+                    ),
+                },
+            },
+            max_completion_tokens=8192,
+            temperature=0.1,
+        )
+        raw = response.choices[0].message.content or ""
+        try:
+            return MeetingExtractionResult.model_validate_json(raw)
+        except (ValueError, json.JSONDecodeError) as error:
+            raise ExtractionError(
+                "Gemini returned malformed structured output"
+            ) from error
+
+
 def configured_provider() -> MeetingExtractionProvider:
     if settings.ai_provider == "cerebras":
         return CerebrasExtractionProvider()
     if settings.ai_provider == "openai":
         return OpenAIExtractionProvider()
+    if settings.ai_provider == "gemini":
+        return GeminiExtractionProvider()
     raise ExtractionError(f"Unsupported extraction provider: {settings.ai_provider}")
 
 
+def configured_providers() -> list[MeetingExtractionProvider]:
+    """Return the primary provider followed by fallback providers.
+
+    The primary is determined by ``settings.ai_provider``. Fallbacks are
+    tried in order: any other provider whose API key is configured.
+    """
+    primary = settings.ai_provider
+    providers: list[MeetingExtractionProvider] = []
+
+    # Build the ordered list: primary first, then others with keys
+    order = [primary]
+    for name in ("gemini", "cerebras", "openai"):
+        if name != primary:
+            order.append(name)
+
+    for name in order:
+        if name == "gemini" and settings.gemini_api_key:
+            providers.append(GeminiExtractionProvider())
+        elif name == "cerebras" and settings.cerebras_api_key:
+            providers.append(CerebrasExtractionProvider())
+        elif name == "openai" and settings.openai_api_key:
+            providers.append(OpenAIExtractionProvider())
+
+    if not providers:
+        raise ExtractionError(
+            f"No extraction provider configured (ai_provider={primary}, "
+            "no API keys set)"
+        )
+    return providers
+
+
 async def extract_with_retry(
-    provider: MeetingExtractionProvider, chunks: list[ChunkInput], attempts: int = 3
+    providers: MeetingExtractionProvider | list[MeetingExtractionProvider],
+    chunks: list[ChunkInput],
+    attempts: int = 2,
 ) -> MeetingExtractionResult:
+    """Try each provider with retries, falling back to the next on failure."""
+    if not isinstance(providers, list):
+        providers = [providers]
     last_error: Exception | None = None
-    for attempt in range(attempts):
-        try:
-            result = await provider.extract(chunks)
-            valid_chunk_ids = {chunk.id for chunk in chunks}
-            refs = [
-                ref.chunk_id
-                for item in [
-                    *result.decisions,
-                    *result.tasks,
-                    *result.risks,
-                    *result.questions,
+    for idx, provider in enumerate(providers):
+        provider_name = type(provider).__name__
+        for attempt in range(attempts):
+            try:
+                result = await provider.extract(chunks)
+                valid_chunk_ids = {chunk.id for chunk in chunks}
+                refs = [
+                    ref.chunk_id
+                    for item in [
+                        *result.decisions,
+                        *result.tasks,
+                        *result.risks,
+                        *result.questions,
+                    ]
+                    for ref in item.references
                 ]
-                for ref in item.references
-            ]
-            if not set(refs).issubset(valid_chunk_ids):
-                raise ExtractionError(
-                    "Model referenced a chunk outside this transcript"
+                if not set(refs).issubset(valid_chunk_ids):
+                    raise ExtractionError(
+                        "Model referenced a chunk outside this transcript"
+                    )
+                return result
+            except Exception as error:
+                last_error = error
+                log.warning(
+                    "Meeting extraction %s attempt %s failed: %s",
+                    provider_name,
+                    attempt + 1,
+                    type(error).__name__,
                 )
-            return result
-        except Exception as error:
-            last_error = error
-            log.warning(
-                "Meeting extraction attempt %s failed: %s",
-                attempt + 1,
-                type(error).__name__,
-            )
-            if attempt < attempts - 1:
-                await asyncio.sleep(2**attempt)
+                if attempt < attempts - 1:
+                    await asyncio.sleep(2**attempt)
+        if idx < len(providers) - 1:
+            log.warning("Falling back from %s to next provider", provider_name)
     raise ExtractionError("Meeting extraction retry budget exhausted") from last_error
 
 
@@ -242,7 +327,7 @@ async def run_extraction(
     extraction.status = "processing"
     await session.commit()
     try:
-        result = await extract_with_retry(configured_provider(), chunks)
+        result = await extract_with_retry(configured_providers(), chunks)
     except Exception as error:
         extraction.status, extraction.error = "failed", str(error)
         await session.commit()

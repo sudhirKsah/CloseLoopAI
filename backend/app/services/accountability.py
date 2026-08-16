@@ -1,5 +1,5 @@
 import hashlib
-import asyncio, json
+import asyncio, json, logging
 from datetime import UTC, datetime
 from enum import StrEnum
 from pydantic import BaseModel, Field
@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.operations import Reminder, DeliveryStatus
 from ..models.work import Task
 from ..config import settings
+
+log = logging.getLogger(__name__)
 
 
 class Tone(StrEnum):
@@ -103,61 +105,131 @@ def _compose(
     return f"{prefix}: {task.title}.{due} {reason}{blocker} Please share a concrete next step or update the task."
 
 
+async def _try_gemini(prompt: str, tone: Tone) -> str | None:
+    if not settings.gemini_api_key:
+        return None
+    try:
+        from openai import AsyncOpenAI
+
+        response = await AsyncOpenAI(
+            api_key=settings.gemini_api_key,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        ).chat.completions.create(
+            model=settings.gemini_model,
+            messages=[
+                {"role": "system", "content": "Return JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "accountability",
+                    "strict": True,
+                    "schema": AccountabilityMessage.model_json_schema(),
+                },
+            },
+            max_completion_tokens=800,
+            temperature=0.3,
+        )
+        raw = response.choices[0].message.content or ""
+        parsed = AccountabilityMessage.model_validate_json(raw)
+        if parsed.tone == tone:
+            return parsed.body
+    except Exception:
+        log.warning("Gemini accountability message failed, falling back")
+    return None
+
+
+async def _try_cerebras(prompt: str, tone: Tone) -> str | None:
+    if not settings.cerebras_api_key:
+        return None
+    try:
+        from cerebras.cloud.sdk import Cerebras
+
+        def request():
+            response = Cerebras(
+                api_key=settings.cerebras_api_key
+            ).chat.completions.create(
+                model=settings.cerebras_model,
+                messages=[
+                    {"role": "system", "content": "Return JSON only."},
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "accountability",
+                        "strict": True,
+                        "schema": AccountabilityMessage.model_json_schema(),
+                    },
+                },
+                max_completion_tokens=800,
+                temperature=0.3,
+            )
+            return response.choices[0].message.content
+
+        parsed = AccountabilityMessage.model_validate_json(
+            await asyncio.to_thread(request)
+        )
+        if parsed.tone == tone:
+            return parsed.body
+    except Exception:
+        log.warning("Cerebras accountability message failed, falling back")
+    return None
+
+
+async def _try_openai(prompt: str, tone: Tone) -> str | None:
+    if not settings.openai_api_key:
+        return None
+    try:
+        from openai import AsyncOpenAI
+
+        response = await AsyncOpenAI(
+            api_key=settings.openai_api_key
+        ).beta.chat.completions.parse(
+            model=settings.meeting_extraction_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a respectful execution coach. Return the requested structure only.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            response_format=AccountabilityMessage,
+        )
+        parsed = response.choices[0].message.parsed
+        if parsed and parsed.tone == tone:
+            return parsed.body
+    except Exception:
+        log.warning("OpenAI accountability message failed, falling back")
+    return None
+
+
+# Provider call functions in fallback order keyed by ai_provider name
+_PROVIDER_FUNCS = {
+    "gemini": _try_gemini,
+    "cerebras": _try_cerebras,
+    "openai": _try_openai,
+}
+
+
 async def generate_message(
     task: Task, reason: str, blockers: list[str], tone: Tone, previous: list[str]
 ) -> str:
     prompt = f"""Write one concise accountability message (max 90 words). Tone: {tone.value}. Task: {task.title}. Due: {task.due_at}. Reason: {reason}. Blockers: {blockers}. Previous messages: {previous}. Do not repeat a previous message, do not shame, and ask for one concrete next step."""
-    try:
-        if settings.ai_provider == "openai":
-            from openai import AsyncOpenAI
 
-            response = await AsyncOpenAI(
-                api_key=settings.openai_api_key
-            ).beta.chat.completions.parse(
-                model=settings.meeting_extraction_model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a respectful execution coach. Return the requested structure only.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                response_format=AccountabilityMessage,
-            )
-            parsed = response.choices[0].message.parsed
-            if parsed and parsed.tone == tone:
-                return parsed.body
-        if settings.ai_provider == "cerebras":
+    # Build fallback order: primary first, then others
+    order = [settings.ai_provider]
+    for name in ("gemini", "cerebras", "openai"):
+        if name != settings.ai_provider:
+            order.append(name)
 
-            def request():
-                from cerebras.cloud.sdk import Cerebras
+    for name in order:
+        func = _PROVIDER_FUNCS.get(name)
+        if not func:
+            continue
+        result = await func(prompt, tone)
+        if result:
+            return result
 
-                response = Cerebras(
-                    api_key=settings.cerebras_api_key
-                ).chat.completions.create(
-                    model=settings.cerebras_model,
-                    messages=[
-                        {"role": "system", "content": "Return JSON only."},
-                        {"role": "user", "content": prompt},
-                    ],
-                    response_format={
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": "accountability",
-                            "strict": True,
-                            "schema": AccountabilityMessage.model_json_schema(),
-                        },
-                    },
-                    max_completion_tokens=400,
-                    temperature=0.3,
-                )
-                return response.choices[0].message.content
-
-            parsed = AccountabilityMessage.model_validate_json(
-                await asyncio.to_thread(request)
-            )
-            if parsed.tone == tone:
-                return parsed.body
-    except Exception:
-        pass
     return _compose(task, reason, blockers, tone, previous)
