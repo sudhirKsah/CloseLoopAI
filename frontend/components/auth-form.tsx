@@ -29,7 +29,8 @@ export function AuthForm({ mode }: { mode: "login" | "signup" | "forgot" }) {
         router.push("/dashboard");
       } else if (mode === "signup") {
         await signup(name, email, password);
-        router.push("/dashboard");
+        // Don't auto-redirect to dashboard — show verification prompt
+        setSent(true);
       } else if (mode === "forgot") {
         const result = await api<{
           sent: boolean;
@@ -119,8 +120,27 @@ export function AuthForm({ mode }: { mode: "login" | "signup" | "forgot" }) {
             </div>
           )}
 
+          {/* Signup — verification email sent state */}
+          {mode === "signup" && sent && (
+            <div className="mt-7 space-y-4">
+              <div className="rounded-xl border border-emerald-300/20 bg-emerald-300/5 p-4 text-sm text-emerald-200">
+                <p className="font-medium">Verify your email</p>
+                <p className="mt-1 text-xs text-zinc-400">
+                  We&apos;ve sent a verification link to <span className="text-emerald-200">{email}</span>.
+                  Click the link in the email to activate your account, then log in.
+                  The link expires in 24 hours.
+                </p>
+              </div>
+              <Link href="/login" className="block">
+                <Button variant="secondary" className="w-full">
+                  Go to login
+                </Button>
+              </Link>
+            </div>
+          )}
+
           {/* Login / Signup / Forgot (initial) forms */}
-          {mode !== "forgot" || !sent ? (
+          {(!sent || mode === "login") ? (
             <form onSubmit={handleSubmit} className="mt-7 space-y-4">
               {mode === "signup" && (
                 <Field

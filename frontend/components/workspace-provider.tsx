@@ -5,7 +5,14 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 
 type Workspace = { id: string; name: string; slug: string; role: string };
-type Me = { id: string; name: string; email: string; workspaces: Workspace[] };
+type Me = {
+  id: string;
+  name: string;
+  email: string;
+  is_email_verified?: boolean;
+  notification_preferences?: Record<string, boolean>;
+  workspaces: Workspace[];
+};
 type Value = {
   me?: Me;
   workspace?: Workspace;
