@@ -344,6 +344,55 @@ export async function kgListDecisions(workspaceId: string, withOutcomeOnly = fal
   );
 }
 
+// PM chat history (persisted per workspace + user)
+export type KgChatMessage = {
+  id: string;
+  role: "user" | "pm";
+  text: string;
+  actions?: ExecutableAction[] | null;
+  created_at?: string | null;
+};
+
+export type ExecutableAction = {
+  action: string;
+  target: string;
+  message: string;
+  urgency: string;
+  status?: "pending" | "running" | "done" | "error";
+  result?: string;
+};
+
+export async function kgListChat(workspaceId: string) {
+  return api<KgChatMessage[]>(`${base(workspaceId)}/pm/chat`);
+}
+
+export async function kgCreateChat(
+  workspaceId: string,
+  body: { role: "user" | "pm"; text: string; actions?: ExecutableAction[] | null },
+) {
+  return api<KgChatMessage>(`${base(workspaceId)}/pm/chat`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function kgUpdateChatActions(
+  workspaceId: string,
+  messageId: string,
+  actions: ExecutableAction[],
+) {
+  return api<KgChatMessage>(`${base(workspaceId)}/pm/chat/${messageId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ actions }),
+  });
+}
+
+export async function kgClearChat(workspaceId: string) {
+  return api<{ cleared: number }>(`${base(workspaceId)}/pm/chat`, {
+    method: "DELETE",
+  });
+}
+
 export async function kgDecisionAccuracy(workspaceId: string) {
   return api<Record<string, unknown>>(`${base(workspaceId)}/pm/decisions/accuracy`);
 }

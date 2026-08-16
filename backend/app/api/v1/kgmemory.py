@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...api.deps import current_user
 from ...db.session import get_session
 from ...models.core import ExternalIdentity, User, WorkspaceMember
+from ...models.pm_chat import PmChatMessage
 from ...models.integrations import (
     Integration,
     IntegrationProvider,
@@ -223,6 +224,16 @@ class SpendRequest(BaseModel):
 
 class FeedbackRequest(BaseModel):
     engineer: str
+
+
+class ChatMessageCreate(BaseModel):
+    role: str = Field(pattern="^(user|pm)$")
+    text: str
+    actions: list[dict] | None = None
+
+
+class ChatMessageActionsUpdate(BaseModel):
+    actions: list[dict]
 
 
 # ── status / connection ───────────────────────────────────────────────────
@@ -529,6 +540,108 @@ async def founder_digest(body: FounderDigestRequest, client=Depends(_client)) ->
         return await client.founder_digest(body.audience)
     except KGMemoryError as e:
         raise _wrap(e)
+
+
+# ── PM chat history ────────────────────────────────────────────────────────
+#
+# Persisted per (workspace, user) so each dashboard user keeps their own
+# thread with the AI PM. These endpoints only touch the CloseLoop database
+# (no kgmemory client required), so chat history survives even if the
+# memory integration is temporarily disconnected.
+
+
+def _chat_msg_to_dict(m: PmChatMessage) -> dict:
+    return {
+        "id": str(m.id),
+        "role": m.role,
+        "text": m.text,
+        "actions": m.actions,
+        "created_at": m.created_at.isoformat() if m.created_at else None,
+    }
+
+
+@router.get("/pm/chat")
+async def list_chat(
+    workspace_id: uuid.UUID,
+    member: WorkspaceMember = Depends(_require_member),
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    rows = (
+        await session.execute(
+            select(PmChatMessage)
+            .where(
+                PmChatMessage.workspace_id == workspace_id,
+                PmChatMessage.user_id == member.user_id,
+            )
+            .order_by(PmChatMessage.created_at)
+        )
+    ).scalars().all()
+    return [_chat_msg_to_dict(m) for m in rows]
+
+
+@router.post("/pm/chat")
+async def create_chat(
+    body: ChatMessageCreate,
+    workspace_id: uuid.UUID,
+    member: WorkspaceMember = Depends(_require_member),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    msg = PmChatMessage(
+        workspace_id=workspace_id,
+        user_id=member.user_id,
+        role=body.role,
+        text=body.text,
+        actions=body.actions,
+    )
+    session.add(msg)
+    await session.commit()
+    await session.refresh(msg)
+    return _chat_msg_to_dict(msg)
+
+
+@router.patch("/pm/chat/{message_id}")
+async def update_chat_actions(
+    message_id: uuid.UUID,
+    body: ChatMessageActionsUpdate,
+    workspace_id: uuid.UUID,
+    member: WorkspaceMember = Depends(_require_member),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    msg = (
+        await session.execute(
+            select(PmChatMessage).where(
+                PmChatMessage.id == message_id,
+                PmChatMessage.workspace_id == workspace_id,
+                PmChatMessage.user_id == member.user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not msg:
+        raise HTTPException(404, "Chat message not found")
+    msg.actions = body.actions
+    await session.commit()
+    await session.refresh(msg)
+    return _chat_msg_to_dict(msg)
+
+
+@router.delete("/pm/chat")
+async def clear_chat(
+    workspace_id: uuid.UUID,
+    member: WorkspaceMember = Depends(_require_member),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    rows = (
+        await session.execute(
+            select(PmChatMessage).where(
+                PmChatMessage.workspace_id == workspace_id,
+                PmChatMessage.user_id == member.user_id,
+            )
+        )
+    ).scalars().all()
+    for m in rows:
+        await session.delete(m)
+    await session.commit()
+    return {"cleared": len(rows)}
 
 
 # ── monitor / actions ─────────────────────────────────────────────────────
