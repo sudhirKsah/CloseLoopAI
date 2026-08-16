@@ -83,18 +83,42 @@ Verify: open `http://localhost:3000` in your browser.
 
 ## Connecting the AI PM (kgmemory)
 
-1. Create an org and API key in the memory service (see `memory-closeloop/README.md`).
-2. Connect it to your CloseLoop workspace:
+kgmemory is **auto-provisioned per workspace** — no API key entry required. The
+first time a workspace touches any kgmemory endpoint (including the status
+check on the Integrations / PM Memory pages), the CloseLoop backend logs into
+the memory service with a service account, creates a dedicated organization
+(each gets its own isolated FalkorDB knowledge graph) and an API key, and
+stores that key encrypted in the workspace's `Integration` row.
 
-```bash
-curl -X POST http://localhost:8000/api/v1/integrations/kgmemory/connect \
-  -H "Authorization: Bearer <your-jwt>" \
-  -H "Content-Type: application/json" \
-  -d '{"workspace_id": "<workspace-uuid>", "api_key": "pfm_..."}'
+### One-time setup (operator only)
+
+1. Configure a superuser in the memory service `.env` (it's created
+   automatically on startup via `FIRST_SUPERUSER_*`):
+
+```env
+# memory-pinchfast/.env
+FIRST_SUPERUSER_EMAIL=admin@example.com
+FIRST_SUPERUSER_PASSWORD=<a-strong-password>
 ```
+
+2. Point the CloseLoop backend at the memory service and give it the same
+   service-account credentials:
+
+```env
+# CloseAI/backend/.env
+KGMEMORY_BASE_URL=http://localhost:8001/v1
+KGMEMORY_SERVICE_EMAIL=admin@example.com
+KGMEMORY_SERVICE_PASSWORD=<same-password-as-above>
+```
+
+That's it. Each workspace gets its own isolated memory graph automatically.
 
 3. Go to **Integrations** in the dashboard to connect Slack.
 4. Go to **PM Memory** to onboard your team and start using the AI PM.
+
+> If the service account isn't configured (or the memory service is down), the
+> kgmemory card shows "Automatic" / not connected and PM Memory shows a
+> "Memory unavailable" notice instead of prompting for an API key.
 
 ## AI PM features
 

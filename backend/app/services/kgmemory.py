@@ -15,21 +15,26 @@ kgmemory org's API key (Fernet-encrypted, same as other provider secrets)
 under `api_key_encrypted`.
 """
 
+import asyncio
 import logging
+import time
+import uuid as _uuid
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
-from ..models.integrations import Integration, IntegrationProvider
+from ..models.integrations import Integration, IntegrationProvider, IntegrationState
 from .credentials import CredentialVault
 
 log = logging.getLogger(__name__)
 
 
 class KGMemoryError(RuntimeError):
-    pass
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class KGMemoryClient:
@@ -37,9 +42,11 @@ class KGMemoryClient:
         self.api_key = api_key
         self.base_url = (base_url or settings.kgmemory_base_url).rstrip("/")
 
-    async def _request(self, method: str, path: str, **kwargs: object) -> dict:
+    async def _request(
+        self, method: str, path: str, *, timeout: float | None = None, **kwargs: object
+    ) -> dict:
         async with httpx.AsyncClient(
-            base_url=self.base_url, timeout=settings.kgmemory_request_timeout
+            base_url=self.base_url, timeout=timeout or settings.kgmemory_request_timeout
         ) as client:
             response = await client.request(
                 method,
@@ -49,7 +56,8 @@ class KGMemoryClient:
             )
             if response.status_code >= 400:
                 raise KGMemoryError(
-                    f"kgmemory {method} {path} failed: {response.status_code} {response.text[:300]}"
+                    f"kgmemory {method} {path} failed: {response.status_code} {response.text[:300]}",
+                    status_code=response.status_code,
                 )
             return response.json() if response.content else {}
 
@@ -142,6 +150,7 @@ class KGMemoryClient:
             "POST",
             "/projects/intake/start",
             json={"founder": founder, "project_name": project_name},
+            timeout=self._PM_TIMEOUT,
         )
 
     async def continue_project_intake(
@@ -156,20 +165,26 @@ class KGMemoryClient:
                 "current_step": current_step,
                 "project_name": project_name,
             },
+            timeout=self._PM_TIMEOUT,
         )
 
     # ── PM brain ───────────────────────────────────────────────────────
+    # PM endpoints invoke LLM calls which can take up to 90s (the LLM
+    # timeout in memory-pinchfast). Use a longer client-side timeout so
+    # we don't cut off the response before the LLM finishes.
+    _PM_TIMEOUT = 120.0
+
     async def decide(self, payload: dict) -> dict:
-        return await self._request("POST", "/pm/decide", json=payload)
+        return await self._request("POST", "/pm/decide", json=payload, timeout=self._PM_TIMEOUT)
 
     async def infer_state(self) -> dict:
-        return await self._request("POST", "/pm/infer-state")
+        return await self._request("POST", "/pm/infer-state", timeout=self._PM_TIMEOUT)
 
     async def check_in(self, person: str) -> dict:
-        return await self._request("POST", "/pm/check-in", params={"person": person})
+        return await self._request("POST", "/pm/check-in", params={"person": person}, timeout=self._PM_TIMEOUT)
 
     async def check_in_auto(self) -> dict:
-        return await self._request("POST", "/pm/check-in/auto")
+        return await self._request("POST", "/pm/check-in/auto", timeout=self._PM_TIMEOUT)
 
     async def list_decisions(self, with_outcome_only: bool = False, limit: int = 50) -> list[dict]:
         return await self._request(
@@ -234,7 +249,7 @@ class KGMemoryClient:
 
     # ── reports ────────────────────────────────────────────────────────
     async def request_report(self, payload: dict) -> dict:
-        return await self._request("POST", "/reports/", json=payload)
+        return await self._request("POST", "/reports/", json=payload, timeout=self._PM_TIMEOUT)
 
     async def report_status(self, report_id: str) -> dict:
         return await self._request("GET", f"/reports/{report_id}")
@@ -242,7 +257,8 @@ class KGMemoryClient:
     # ── onboarding ─────────────────────────────────────────────────────
     async def start_onboarding(self, name: str, role: str = "engineer") -> dict:
         return await self._request(
-            "POST", "/onboarding/start", json={"name": name, "role": role}
+            "POST", "/onboarding/start", json={"name": name, "role": role},
+            timeout=self._PM_TIMEOUT,
         )
 
     async def continue_onboarding(
@@ -252,6 +268,7 @@ class KGMemoryClient:
             "POST",
             "/onboarding/continue",
             json={"name": name, "message": message, "current_step": current_step},
+            timeout=self._PM_TIMEOUT,
         )
 
     async def onboarding_status(self, name: str) -> dict:
@@ -259,7 +276,7 @@ class KGMemoryClient:
 
     # ── planning ───────────────────────────────────────────────────────
     async def detect_scope_creep(self, project: str) -> dict:
-        return await self._request("POST", "/planning/scope-creep", json={"project": project})
+        return await self._request("POST", "/planning/scope-creep", json={"project": project}, timeout=self._PM_TIMEOUT)
 
     async def analyze_dependencies(self, project: str | None = None) -> dict:
         return await self._request(
@@ -429,3 +446,173 @@ async def get_client_for_workspace(
     api_key = CredentialVault().decrypt(integration.config["api_key_encrypted"])
     base_url = integration.config.get("base_url") or settings.kgmemory_base_url
     return KGMemoryClient(api_key, base_url)
+
+
+# ── auto-provisioning ──────────────────────────────────────────────────────
+#
+# Instead of asking each workspace admin to paste a kgmemory API key, the
+# platform provisions one automatically. A service account (matching kgmemory's
+# FIRST_SUPERUSER_* credentials) logs into kgmemory via JWT, creates a dedicated
+# organization (each gets its own isolated FalkorDB graph) and an API key for
+# it, then stores that key — Fernet-encrypted — in the workspace's Integration
+# row. From then on every proxied request uses that key transparently.
+
+
+class KGMemoryAdminClient:
+    """JWT-authenticated client for kgmemory's org/api-key management API.
+
+    Used only server-side to provision per-workspace orgs. The service token is
+    cached in-process for a bit less than kgmemory's JWT lifetime so we don't
+    log in on every request.
+    """
+
+    _token: str | None = None
+    _token_expires_at: float = 0.0
+    _login_lock = asyncio.Lock()
+
+    def __init__(self, base_url: str | None = None) -> None:
+        self.base_url = (base_url or settings.kgmemory_base_url).rstrip("/")
+
+    async def _login(self) -> str:
+        async with httpx.AsyncClient(
+            base_url=self.base_url, timeout=settings.kgmemory_request_timeout
+        ) as client:
+            response = await client.post(
+                "/auth/login",
+                data={
+                    "username": settings.kgmemory_service_email,
+                    "password": settings.kgmemory_service_password,
+                },
+            )
+        if response.status_code >= 400:
+            raise KGMemoryError(
+                f"kgmemory service-account login failed: {response.status_code} {response.text[:300]}",
+                status_code=response.status_code,
+            )
+        token = response.json().get("access_token")
+        if not token:
+            raise KGMemoryError("kgmemory login response missing access_token")
+        # Refresh a little before the real expiry to avoid edge-case 401s.
+        lifetime = max(settings.kgmemory_request_timeout, 60.0)
+        self._token = token
+        self._token_expires_at = time.monotonic() + lifetime
+        return token
+
+    async def _token_value(self) -> str:
+        if self._token and time.monotonic() < self._token_expires_at:
+            return self._token
+        async with self._login_lock:
+            # Re-check after acquiring the lock — another coroutine may have
+            # just refreshed it.
+            if self._token and time.monotonic() < self._token_expires_at:
+                return self._token
+            return await self._login()
+
+    async def _request(self, method: str, path: str, **kwargs: object) -> dict:
+        token = await self._token_value()
+        async with httpx.AsyncClient(
+            base_url=self.base_url, timeout=settings.kgmemory_request_timeout
+        ) as client:
+            response = await client.request(
+                method,
+                path,
+                headers={"Authorization": f"Bearer {token}"},
+                **kwargs,
+            )
+        if response.status_code >= 400:
+            raise KGMemoryError(
+                f"kgmemory admin {method} {path} failed: {response.status_code} {response.text[:300]}",
+                status_code=response.status_code,
+            )
+        return response.json() if response.content else {}
+
+    async def create_org(self, name: str, slug: str) -> dict:
+        return await self._request(
+            "POST", "/orgs/", json={"name": name, "slug": slug}
+        )
+
+    async def list_orgs(self) -> list[dict]:
+        return await self._request("GET", "/orgs/")
+
+    async def create_api_key(self, org_id: str, name: str) -> dict:
+        return await self._request(
+            "POST", f"/orgs/{org_id}/api-keys", json={"name": name}
+        )
+
+
+def _provisioning_slug(workspace_id: str) -> str:
+    """Deterministic, unique slug for a workspace's kgmemory org."""
+    return f"cl-{_uuid.UUID(str(workspace_id)).hex[:16]}"
+
+
+async def provision_workspace(
+    session: AsyncSession, workspace_id: str
+) -> KGMemoryClient:
+    """Create a kgmemory org + API key for the workspace and persist it.
+
+    Idempotent: if an org with the workspace's slug already exists (e.g. a
+    previous attempt failed before saving the key), we reuse it and issue a
+    fresh API key. Safe to call repeatedly — once the Integration row exists
+    with a key, callers should use `ensure_client_for_workspace` instead.
+    """
+    if not settings.kgmemory_service_email or not settings.kgmemory_service_password:
+        raise KGMemoryError(
+            "kgmemory auto-provisioning is not configured: set "
+            "KGMEMORY_SERVICE_EMAIL and KGMEMORY_SERVICE_PASSWORD"
+        )
+    admin = KGMemoryAdminClient()
+    slug = _provisioning_slug(workspace_id)
+    name = f"CloseLoop {_uuid.UUID(str(workspace_id)).hex[:8]}"
+    try:
+        org = await admin.create_org(name=name, slug=slug)
+    except KGMemoryError as error:
+        if error.status_code != 409:
+            raise
+        # Org already exists from a partial prior run — reuse it.
+        orgs = await admin.list_orgs()
+        org = next((o for o in orgs if o.get("slug") == slug), None)
+        if org is None:
+            raise KGMemoryError(
+                f"kgmemory org slug '{slug}' is taken but not owned by the service account"
+            )
+    api_key = await admin.create_api_key(org["id"], name=f"closeloop-{slug}")
+    raw_key = api_key["key"]
+    config = {"api_key_encrypted": CredentialVault().encrypt(raw_key)}
+    integration = (
+        await session.execute(
+            select(Integration).where(
+                Integration.workspace_id == workspace_id,
+                Integration.provider == IntegrationProvider.KGMEMORY,
+            )
+        )
+    ).scalar_one_or_none()
+    if integration:
+        integration.config = config
+        integration.state = IntegrationState.CONNECTED
+        integration.external_account_id = str(org["id"])
+    else:
+        integration = Integration(
+            workspace_id=workspace_id,
+            provider=IntegrationProvider.KGMEMORY,
+            external_account_id=str(org["id"]),
+            config=config,
+        )
+        session.add(integration)
+    await session.commit()
+    log.info("auto-provisioned kgmemory org %s for workspace %s", org["id"], workspace_id)
+    return KGMemoryClient(raw_key, admin.base_url)
+
+
+async def ensure_client_for_workspace(
+    session: AsyncSession, workspace_id: str
+) -> KGMemoryClient:
+    """Return a kgmemory client for the workspace, provisioning one on demand.
+
+    This is the auto-connect path: the moment a workspace touches any kgmemory
+    endpoint (including the status check), a dedicated org + API key is created
+    if it doesn't already exist, so users never have to configure anything.
+    """
+    client = await get_client_for_workspace(session, workspace_id)
+    if client is not None:
+        return client
+    return await provision_workspace(session, workspace_id)

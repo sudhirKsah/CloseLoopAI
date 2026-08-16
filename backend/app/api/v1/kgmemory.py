@@ -1,18 +1,24 @@
 """HTTP proxy from CloseLoop to the kgmemory microservice.
 
-Every workspace that has connected the `kgmemory` integration (see
-`/integrations/kgmemory/connect`) gets a thin pass-through API here so the
-frontend can reach the memory service's PM-brain, monitor, planning, sprints,
-stakeholders, team, reports, and people endpoints through the CloseLoop
-backend (using the workspace's own JWT auth) instead of needing the raw
-kgmemory API key in the browser.
+Every workspace gets a thin pass-through API here so the frontend can reach the
+memory service's PM-brain, monitor, planning, sprints, stakeholders, team,
+reports, and people endpoints through the CloseLoop backend (using the
+workspace's own JWT auth) instead of needing the raw kgmemory API key in the
+browser.
 
-All routes are scoped to a workspace and require the caller to be a member of
-it. If kgmemory isn't connected for the workspace, every route returns 409.
+kgmemory is auto-provisioned: the first time a workspace touches any kgmemory
+endpoint (including the status check), the backend logs in with a service
+account, creates a dedicated kgmemory organization (each gets its own isolated
+knowledge graph) and an API key, and stores that key encrypted in the
+workspace's Integration row. Users never have to paste an API key. If the
+service account isn't configured, routes return 502 and `/status` reports
+`connected: false`.
 """
 
+import logging
 import uuid
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -28,8 +34,13 @@ from ...models.integrations import (
     OAuthCredential,
 )
 from ...services.credentials import CredentialVault
-from ...services.kgmemory import KGMemoryError, get_client_for_workspace
+from ...services.kgmemory import (
+    KGMemoryError,
+    ensure_client_for_workspace,
+)
 from ...services.slack import send_dm
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/kgmemory", tags=["kgmemory"])
 
@@ -57,10 +68,13 @@ async def _client(
     _member: WorkspaceMember = Depends(_require_member),
     session: AsyncSession = Depends(get_session),
 ):
-    client = await get_client_for_workspace(session, str(workspace_id))
-    if client is None:
-        raise HTTPException(409, "Knowledge Graph Memory is not connected for this workspace")
-    return client
+    # Auto-provision a kgmemory org + API key for the workspace on first touch
+    # so users never have to configure anything. Falls back to a 409 only if
+    # provisioning itself fails (e.g. service account not configured).
+    try:
+        return await ensure_client_for_workspace(session, str(workspace_id))
+    except KGMemoryError as error:
+        raise HTTPException(502, f"kgmemory provisioning failed: {error}")
 
 
 def _wrap(error: KGMemoryError) -> HTTPException:
@@ -245,8 +259,17 @@ async def status(
     session: AsyncSession = Depends(get_session),
     _user: User = Depends(current_user),
 ) -> dict:
-    client = await get_client_for_workspace(session, str(workspace_id))
-    return {"connected": client is not None}
+    # Auto-provision on status check too, so the frontend can simply call this
+    # endpoint to ensure kgmemory is connected for the workspace. If the
+    # service account isn't configured (or provisioning fails), report
+    # `connected: false` instead of erroring — the integrations card then shows
+    # a helpful "not configured" state rather than a 5xx.
+    try:
+        await ensure_client_for_workspace(session, str(workspace_id))
+        return {"connected": True}
+    except KGMemoryError as error:
+        log.warning("kgmemory auto-provision failed for %s: %s", workspace_id, error)
+        return {"connected": False, "error": str(error)}
 
 
 # ── memory / ingest ───────────────────────────────────────────────────────
@@ -462,6 +485,8 @@ async def decide(body: DecideRequest, client=Depends(_client)) -> dict:
         return await client.decide(body.model_dump(exclude_none=True))
     except KGMemoryError as e:
         raise _wrap(e)
+    except httpx.ReadTimeout:
+        raise HTTPException(504, "The PM is still thinking — the LLM took too long. Try again.")
 
 
 @router.post("/pm/infer-state")

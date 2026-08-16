@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     monitoring_hour_utc: int = 3  # 08:30 IST
     kgmemory_base_url: str = "http://localhost:8001/v1"
     kgmemory_request_timeout: float = 20.0
+    # Service account used to auto-provision a per-workspace kgmemory org + API
+    # key so users never have to paste an API key. Matches the FIRST_SUPERUSER_*
+    # credentials configured on the kgmemory service.
+    kgmemory_service_email: str = ""
+    kgmemory_service_password: str = ""
     frontend_url: str = "http://localhost:3000"
     # Razorpay (Indian payment gateway — supports UPI, cards, netbanking,
     # international cards). Test mode works without any legal paperwork.

@@ -3,6 +3,17 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+
+
+def _to_aware_utc(dt: datetime | None) -> datetime | None:
+    """Normalize a datetime to timezone-aware UTC. DB columns without
+    ``timezone=True`` return naive datetimes, which can't be compared with
+    aware ones (e.g. ``datetime.now(UTC)``)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from .models.integrations import CalendarEvent, ExternalTaskMapping, IntegrationProvider
@@ -207,7 +218,7 @@ class MonitoringPolicy:
                 "A connected system reports a blocker.",
                 blockers,
             )
-        if task.due_at and task.due_at < now:
+        if task.due_at and _to_aware_utc(task.due_at) < now:
             return Assessment(
                 TaskState.OVERDUE, -10, "reminder", "The deadline has passed.", blockers
             )
@@ -219,9 +230,8 @@ class MonitoringPolicy:
                 "Recent delivery activity was detected.",
                 blockers,
             )
-        inactive = not task.last_activity_at or task.last_activity_at < now - timedelta(
-            days=3
-        )
+        last_activity = _to_aware_utc(task.last_activity_at)
+        inactive = not last_activity or last_activity < now - timedelta(days=3)
         if inactive:
             return Assessment(
                 task.state,

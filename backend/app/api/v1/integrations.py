@@ -191,10 +191,12 @@ async def connect(
 @router.get("/{provider}/callback")
 async def callback(
     provider: IntegrationProvider,
-    code: str,
-    state: str,
+    code: str | None = None,
+    state: str | None = None,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
+    if not code or not state:
+        raise HTTPException(400, "Missing OAuth code or state")
     record = (
         await session.execute(
             select(OAuthState).where(

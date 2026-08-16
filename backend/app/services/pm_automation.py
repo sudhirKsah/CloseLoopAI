@@ -75,7 +75,7 @@ async def get_user_by_slack_id(
                 ExternalIdentity.external_user_id == slack_user_id,
             )
         )
-    ).scalar_one_or_none()
+    ).scalars().first()
     if not identity:
         return None
     return await session.get(User, identity.user_id)
@@ -88,7 +88,7 @@ async def get_workspace_for_user(
         await session.execute(
             select(WorkspaceMember).where(WorkspaceMember.user_id == user_id)
         )
-    ).scalar_one_or_none()
+    ).scalars().first()
     return member.workspace_id if member else None
 
 
@@ -118,7 +118,7 @@ async def get_slack_id_for_name(
                         ExternalIdentity.user_id == user.id,
                     )
                 )
-            ).scalar_one_or_none()
+            ).scalars().first()
             if identity:
                 return identity.external_user_id
     for user in users:
@@ -130,7 +130,7 @@ async def get_slack_id_for_name(
                         ExternalIdentity.user_id == user.id,
                     )
                 )
-            ).scalar_one_or_none()
+            ).scalars().first()
             if identity:
                 return identity.external_user_id
     return None
@@ -328,7 +328,7 @@ async def auto_onboard_new_members(
                     ExternalIdentity.user_id == user.id,
                 )
             )
-        ).scalar_one_or_none()
+        ).scalars().first()
         if not identity:
             continue
 

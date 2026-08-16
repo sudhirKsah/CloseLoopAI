@@ -70,9 +70,12 @@ export function KgMemoryPage() {
           <div className="flex items-start gap-4">
             <Brain className="mt-0.5 size-6 text-amber-300" />
             <div>
-              <p className="text-sm font-medium">Memory not connected</p>
+              <p className="text-sm font-medium">Memory unavailable</p>
               <p className="mt-1 text-xs text-zinc-500">
-                Connect the Knowledge Graph Memory integration to unlock the AI PM.
+                Knowledge Graph Memory is auto-provisioned for every workspace.
+                It couldn&apos;t be reached right now — ask an admin to verify the
+                kgmemory service and the KGMEMORY_SERVICE_* credentials on the
+                backend.
               </p>
             </div>
           </div>

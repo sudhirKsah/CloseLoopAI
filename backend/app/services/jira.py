@@ -41,9 +41,10 @@ class JiraClient:
         if not credential:
             raise RuntimeError("Jira credential missing")
         vault = CredentialVault()
-        if credential.expires_at and credential.expires_at <= datetime.now(
-            UTC
-        ) + timedelta(minutes=2):
+        expires_at = credential.expires_at
+        if expires_at and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expires_at and expires_at <= datetime.now(UTC) + timedelta(minutes=2):
             refreshed = await self._token(
                 {
                     "grant_type": "refresh_token",
@@ -101,10 +102,21 @@ class JiraClient:
         description: str | None,
         assignee_account_id: str | None = None,
     ) -> dict:
+        # Jira REST API v3 requires description in Atlassian Document Format (ADF)
+        adf_description = {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [{"type": "text", "text": description or ""}],
+                }
+            ],
+        }
         fields = {
             "project": {"key": project_key},
             "summary": summary,
-            "description": description or "",
+            "description": adf_description,
             "issuetype": {"name": "Task"},
         }
         if assignee_account_id:
@@ -128,12 +140,29 @@ class JiraClient:
     async def search_issues(
         self, token: str, cloud_id: str, project_key: str, max_results: int = 50
     ) -> list[dict]:
-        """Search for issues in a Jira project."""
+        """Search for issues in a Jira project.
+
+        Uses the /rest/api/3/search/jql endpoint (POST) — the old
+        /rest/api/3/search endpoint was removed (410 Gone) per
+        https://developer.atlassian.com/changelog/#CHANGE-2046.
+        """
         jql = f"project = {project_key} ORDER BY updated DESC"
         result = await self.request(
             token,
             cloud_id,
-            "GET",
-            f"search?jql={jql}&maxResults={max_results}&fields=summary,status,assignee,priority,created,updated",
+            "POST",
+            "search/jql",
+            json={
+                "jql": jql,
+                "maxResults": max_results,
+                "fields": [
+                    "summary",
+                    "status",
+                    "assignee",
+                    "priority",
+                    "created",
+                    "updated",
+                ],
+            },
         )
         return result.get("issues", [])

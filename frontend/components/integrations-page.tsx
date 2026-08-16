@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
   Calendar,
   Check,
   Github,
-  Key,
   Link2,
   Slack,
   Zap,
@@ -19,8 +18,8 @@ import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import * as kg from "@/lib/kgmemory";
 import type { Integration } from "@/lib/types";
 
 const PROVIDERS = [
@@ -56,9 +55,22 @@ export function IntegrationsPage() {
     workspaceId ? `/workspaces/${workspaceId}/integrations` : "",
   );
   const [busy, setBusy] = useState<string>();
-  const [kgmemoryOpen, setKgmemoryOpen] = useState(false);
 
   const integrations = q.data ?? [];
+
+  // kgmemory is auto-provisioned server-side: hitting /status ensures a
+  // dedicated org + API key exists for this workspace, then we reload the
+  // integrations list so the card reflects the freshly-created connection.
+  useEffect(() => {
+    if (!workspaceId) return;
+    kg
+      .kgStatus(workspaceId)
+      .then(() => q.reload())
+      .catch(() => {
+        /* surfaced via the card status, not a toast */
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId]);
 
   const connect = async (provider: string) => {
     if (!workspaceId || !me) return;
@@ -162,7 +174,7 @@ export function IntegrationsPage() {
           );
         })}
 
-        {/* kgmemory card */}
+        {/* kgmemory card — auto-provisioned, no API key entry required */}
         <Card className="p-5">
           <div className="flex items-start gap-4">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-400/10 text-violet-300">
@@ -180,7 +192,7 @@ export function IntegrationsPage() {
               <p className="mt-1 text-xs text-zinc-500">
                 {kgmemoryIntegration?.state === "connected"
                   ? "Reliability scores and meeting memory active"
-                  : "Optional — adds engineer reliability scoring"}
+                  : "Connecting… a dedicated memory graph is being provisioned for this workspace."}
               </p>
               {kgmemoryIntegration?.state === "connected" && (
                 <Link
@@ -200,30 +212,12 @@ export function IntegrationsPage() {
                   </Button>
                 </Link>
               ) : (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={!workspaceId || !me}
-                  onClick={() => setKgmemoryOpen(true)}
-                >
-                  <Key size={13} /> Connect
-                </Button>
+                <Badge variant="info">Automatic</Badge>
               )}
             </div>
           </div>
         </Card>
       </div>
-
-      {/* kgmemory connect dialog */}
-      <KgMemoryDialog
-        open={kgmemoryOpen}
-        onClose={() => setKgmemoryOpen(false)}
-        workspaceId={workspaceId}
-        onSuccess={async () => {
-          await q.reload();
-          setKgmemoryOpen(false);
-        }}
-      />
     </IntegrationsLayout>
   );
 }
@@ -242,87 +236,5 @@ function IntegrationsLayout({ children }: { children: React.ReactNode }) {
       </p>
       <div className="mt-7">{children}</div>
     </main>
-  );
-}
-
-function KgMemoryDialog({
-  open,
-  onClose,
-  workspaceId,
-  onSuccess,
-}: {
-  open: boolean;
-  onClose: () => void;
-  workspaceId: string;
-  onSuccess: () => Promise<void>;
-}) {
-  const toast = useToast();
-  const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
-  const [pending, setPending] = useState(false);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!workspaceId || !apiKey) return;
-    setPending(true);
-    try {
-      await api("/integrations/kgmemory/connect", {
-        method: "POST",
-        body: JSON.stringify({
-          workspace_id: workspaceId,
-          api_key: apiKey,
-          base_url: baseUrl || undefined,
-        }),
-      });
-      toast("Knowledge Graph Memory connected", "success");
-      setApiKey("");
-      setBaseUrl("");
-      await onSuccess();
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "Connection failed", "error");
-    } finally {
-      setPending(false);
-    }
-  };
-
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      title="Connect Knowledge Graph Memory"
-      description="Enter your kgmemory API key. Keys are issued via the kgmemory dashboard."
-    >
-      <form className="space-y-4" onSubmit={submit}>
-        <label className="block text-xs text-zinc-400">
-          API key
-          <input
-            required
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 text-sm text-white outline-none transition focus:border-emerald-300/60"
-            placeholder="kg_live_..."
-          />
-        </label>
-        <label className="block text-xs text-zinc-400">
-          Base URL (optional)
-          <input
-            type="url"
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-white/[.04] px-3 text-sm text-white outline-none transition focus:border-emerald-300/60"
-            placeholder="https://api.kgmemory.com"
-          />
-        </label>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button disabled={!workspaceId || pending}>
-            {pending ? "Connecting…" : "Connect"}
-          </Button>
-        </div>
-      </form>
-    </Dialog>
   );
 }

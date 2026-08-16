@@ -66,9 +66,10 @@ class CalendarClient:
             )
         ).scalar_one()
         vault = CredentialVault()
-        if credential.expires_at and credential.expires_at <= datetime.now(
-            UTC
-        ) + timedelta(minutes=2):
+        expires_at = credential.expires_at
+        if expires_at and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expires_at and expires_at <= datetime.now(UTC) + timedelta(minutes=2):
             refresh = vault.decrypt(credential.refresh_token_encrypted or "")
             if self.provider == IntegrationProvider.GOOGLE_CALENDAR:
                 url = "https://oauth2.googleapis.com/token"
