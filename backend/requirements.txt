@@ -74,3 +74,4 @@ websockets==16.1.1
 wheel==0.47.0
 zopfli==0.4.3
 openpyxl==3.1.5
+razorpay==1.4.2

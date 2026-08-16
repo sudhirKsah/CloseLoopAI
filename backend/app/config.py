@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     kgmemory_base_url: str = "http://localhost:8001/v1"
     kgmemory_request_timeout: float = 20.0
     frontend_url: str = "http://localhost:3000"
+    # Razorpay (Indian payment gateway — supports UPI, cards, netbanking,
+    # international cards). Test mode works without any legal paperwork.
+    # Get keys from https://dashboard.razorpay.com/app/keys
+    razorpay_key_id: str = ""
+    razorpay_key_secret: str = ""
+    razorpay_webhook_secret: str = ""
+    razorpay_currency: str = "INR"
     # cors_origins: list[str] = [
     #     "http://localhost:3000",
     # ]

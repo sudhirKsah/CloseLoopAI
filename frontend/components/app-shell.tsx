@@ -7,6 +7,7 @@ import {
   CalendarDays,
   CheckSquare,
   ChevronDown,
+  CreditCard,
   FileBarChart,
   LayoutDashboard,
   Link2,
@@ -31,6 +32,7 @@ const links = [
   ["Analytics", "/analytics", Activity],
   ["Integrations", "/integrations", Link2],
   ["PM Memory", "/memory", Sparkles],
+  ["Payments", "/payments", CreditCard],
   ["Reports", "/reports", FileBarChart],
   ["Settings", "/settings", Settings],
 ] as const;
