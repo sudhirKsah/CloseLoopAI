@@ -453,6 +453,63 @@ async def select_jira_project(
     return {"selected": project_key}
 
 
+@router.get("/jira/{integration_id}/issues")
+async def jira_issues(
+    integration_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+) -> dict:
+    """List issues from the selected Jira project."""
+    integration = await session.get(Integration, integration_id)
+    if not integration or integration.provider != IntegrationProvider.JIRA:
+        raise HTTPException(404, "Jira integration not found")
+    project_key = integration.config.get("project_key")
+    if not project_key:
+        raise HTTPException(400, "No Jira project selected")
+    token = await JiraClient().token_for(session, integration)
+    issues = await JiraClient().search_issues(
+        token, integration.config["cloud_id"], project_key
+    )
+    simplified = []
+    for issue in issues:
+        fields = issue.get("fields", {})
+        assignee = fields.get("assignee")
+        status = fields.get("status", {})
+        priority = fields.get("priority", {})
+        simplified.append({
+            "id": issue.get("id"),
+            "key": issue.get("key"),
+            "summary": fields.get("summary", ""),
+            "status": status.get("name", "Unknown"),
+            "status_category": status.get("statusCategory", {}).get("name", ""),
+            "priority": priority.get("name", "None"),
+            "assignee": assignee.get("displayName") if assignee else "Unassigned",
+            "assignee_email": assignee.get("emailAddress") if assignee else None,
+            "created": fields.get("created"),
+            "updated": fields.get("updated"),
+        })
+    return {"issues": simplified, "project_key": project_key}
+
+
+@router.post("/jira/{integration_id}/issues")
+async def create_jira_issue(
+    integration_id: uuid.UUID,
+    summary: str = Query(...),
+    description: str = Query(""),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Create a new issue in the selected Jira project."""
+    integration = await session.get(Integration, integration_id)
+    if not integration or integration.provider != IntegrationProvider.JIRA:
+        raise HTTPException(404, "Jira integration not found")
+    project_key = integration.config.get("project_key")
+    if not project_key:
+        raise HTTPException(400, "No Jira project selected")
+    token = await JiraClient().token_for(session, integration)
+    issue = await JiraClient().create_issue(
+        token, integration.config["cloud_id"], project_key, summary, description
+    )
+    return {"issue": issue}
+
+
 @router.get("/linear/{integration_id}/projects")
 async def linear_projects(
     integration_id: uuid.UUID, session: AsyncSession = Depends(get_session)

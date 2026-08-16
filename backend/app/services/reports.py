@@ -2,7 +2,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from weasyprint import HTML
 from ..config import settings
 from ..models.operations import Insight, WeeklyReport
 from ..models.core import User, WorkspaceMember
@@ -53,6 +52,7 @@ class WeeklyReportService:
         directory = Path(settings.reports_dir)
         directory.mkdir(parents=True, exist_ok=True)
         path = directory / f"{report.id}.pdf"
+        from weasyprint import HTML  # lazy import: weasyprint needs GTK/Pango native libs
         HTML(string=self._html(metrics, insights, start, period_end)).write_pdf(path)
         report.pdf_url = str(path)
         await session.commit()

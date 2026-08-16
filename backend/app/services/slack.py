@@ -8,7 +8,7 @@ from ..models.work import TaskCandidate
 
 class SlackClient:
     authorize_url = "https://slack.com/oauth/v2/authorize"
-    scopes = "chat:write users:read users:read.email"
+    scopes = "chat:write im:write im:history users:read users:read.email"
 
     async def access_token(self, code: str, redirect_uri: str) -> dict:
         async with httpx.AsyncClient() as client:
@@ -113,3 +113,47 @@ async def post_approval(token: str, channel: str, candidate: TaskCandidate) -> d
         )
         response.raise_for_status()
         return response.json()
+
+
+async def open_dm(token: str, slack_user_id: str) -> str:
+    """Open a DM channel with a Slack user and return the channel id."""
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://slack.com/api/conversations.open",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"users": slack_user_id},
+        )
+        response.raise_for_status()
+        data = response.json()
+    if not data.get("ok"):
+        raise RuntimeError(data.get("error", "conversations.open failed"))
+    return data["channel"]["id"]
+
+
+async def send_dm(
+    token: str,
+    slack_user_id: str,
+    text: str,
+    thread_ts: str | None = None,
+) -> dict:
+    """Send a direct message to a Slack user by their Slack user id.
+
+    Opens a DM channel first (required for bot tokens) then posts the message.
+    If thread_ts is provided, replies in that thread instead of starting a new
+    top-level message.
+    """
+    channel_id = await open_dm(token, slack_user_id)
+    payload: dict = {"channel": channel_id, "text": text}
+    if thread_ts:
+        payload["thread_ts"] = thread_ts
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {token}"},
+            json=payload,
+        )
+        response.raise_for_status()
+        data = response.json()
+    if not data.get("ok"):
+        raise RuntimeError(data.get("error", "chat.postMessage failed"))
+    return data

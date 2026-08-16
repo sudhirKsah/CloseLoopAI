@@ -124,3 +124,16 @@ class JiraClient:
         return await self.request(
             token, cloud_id, "GET", f"issue/{issue_id}?fields=status,summary,updated"
         )
+
+    async def search_issues(
+        self, token: str, cloud_id: str, project_key: str, max_results: int = 50
+    ) -> list[dict]:
+        """Search for issues in a Jira project."""
+        jql = f"project = {project_key} ORDER BY updated DESC"
+        result = await self.request(
+            token,
+            cloud_id,
+            "GET",
+            f"search?jql={jql}&maxResults={max_results}&fields=summary,status,assignee,priority,created,updated",
+        )
+        return result.get("issues", [])
