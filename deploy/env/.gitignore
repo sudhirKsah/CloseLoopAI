@@ -1,0 +1,4 @@
+# Ignore real env files (contain secrets)
+# Only .example files should be committed
+*.yaml
+!*.yaml.example

@@ -1,3 +1,4 @@
+import os
 from celery import Celery
 from celery.schedules import crontab
 from .config import settings
@@ -20,6 +21,11 @@ celery.conf.update(
         "socket_timeout": 2,
         "socket_connect_timeout": 2,
     },
+    # When CELERY_ALWAYS_EAGER is set (e.g. Cloud Run jobs), tasks run
+    # synchronously in the same process — no worker or broker needed.
+    task_always_eager=os.environ.get("CELERY_ALWAYS_EAGER", "").lower()
+    in ("true", "1", "yes"),
+    task_eager_propagates=True,
     beat_schedule={
         "daily-execution-monitor": {
             "task": "monitor.organizations",
