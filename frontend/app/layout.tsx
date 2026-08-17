@@ -3,8 +3,9 @@ import type { Metadata } from "next";
 import { AuthProvider } from "@/components/auth-provider";
 import { ToastProvider } from "@/components/ui/toast";
 export const metadata: Metadata = {
-  title: "CloseLoop — Execution intelligence",
-  description: "Close the loop between meetings and outcomes.",
+  title: "Pathayo — Execution intelligence powered by CloseLoop AI",
+  description:
+    "Pathayo sends an AI agent to your meetings, extracts every decision, and tracks it until shipped. Close the loop between meetings and outcomes.",
 };
 export default function RootLayout({
   children,

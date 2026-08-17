@@ -27,9 +27,9 @@ export default function Landing() {
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
           <Link href="/" className="flex items-center gap-2.5 font-semibold">
             <span className="grid h-8 w-8 place-items-center rounded-[10px] bg-emerald-300 font-black text-zinc-950">
-              C
+              P
             </span>
-            CloseLoop
+            Pathayo
           </Link>
           <nav className="hidden gap-7 text-sm text-zinc-400 md:flex">
             <a href="#how" className="transition hover:text-white">How it works</a>
@@ -64,10 +64,11 @@ export default function Landing() {
             and tracks it until shipped.
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-7 text-zinc-400">
-            CloseLoop sends a bot to your Google Meet, Zoom, or Teams call. It
-            transcribes the meeting, uses AI to pull out decisions, tasks, and
-            risks — then watches GitHub, Slack, and Jira to make sure the work
-            actually gets done. You get alerted before things slip.
+            Pathayo sends an AI agent — CloseLoop — to your Google Meet, Zoom,
+            Microsoft Teams, or Slack Huddle. It transcribes the meeting, uses AI
+            to pull out decisions, tasks, and risks — then watches GitHub, Slack,
+            and Jira to make sure the work actually gets done. You get alerted
+            before things slip.
           </p>
           <div className="mt-8 flex justify-center gap-3">
             <Link href="/signup">
@@ -122,8 +123,8 @@ export default function Landing() {
             From meeting to shipped — automatically.
           </h2>
           <p className="mt-3 max-w-2xl text-zinc-400">
-            No more "who said they'd do what?" CloseLoop captures the full
-            conversation, turns it into owned tasks, and holds people
+            No more "who said they'd do what?" Pathayo's CloseLoop agent captures
+            the full conversation, turns it into owned tasks, and holds people
             accountable with real signals from the tools they already use.
           </p>
 
@@ -131,7 +132,7 @@ export default function Landing() {
             <FlowRow
               icon={<Bot size={22} />}
               title="1. A bot joins your meeting"
-              desc="Add a meeting URL and CloseLoop sends a Recall.ai bot. It joins Google Meet, Zoom, Microsoft Teams, or Slack Huddles, records audio, and produces a full timestamped transcript. No plugins, no manual recording."
+              desc="Add a meeting URL and Pathayo sends its CloseLoop agent via Recall.ai. It joins Google Meet, Zoom, Microsoft Teams, or Slack Huddles, records audio, and produces a full timestamped transcript. No plugins, no manual recording."
               mockup={
                 <div className="rounded-xl border border-white/[.08] bg-[#111116] p-4">
                   <div className="flex items-center gap-2 text-xs text-zinc-500">
@@ -189,7 +190,7 @@ export default function Landing() {
             <FlowRow
               icon={<Github size={22} />}
               title="3. Real signals from your tools"
-              desc="CloseLoop connects to GitHub, Slack, Jira, and Linear. It matches commits, PRs, and messages to each task — so you know what's actually happening, not just what people say in standups."
+              desc="Pathayo connects to GitHub, Slack, Jira, and Linear. The CloseLoop agent matches commits, PRs, and messages to each task — so you know what's actually happening, not just what people say in standups."
               mockup={
                 <div className="rounded-xl border border-white/[.08] bg-[#111116] p-4">
                   <p className="text-sm font-medium">OAuth consent redesign</p>
@@ -306,30 +307,41 @@ export default function Landing() {
             Connects to the tools your team already uses.
           </h2>
           <p className="mt-3 max-w-2xl text-zinc-400">
-            OAuth-based integrations. Connect only what you need — CloseLoop
+            OAuth-based integrations. Connect only what you need — Pathayo
             pulls signals from each source and matches them to your tasks.
           </p>
           <div className="mt-10 flex flex-wrap gap-3">
             {[
-              ["GitHub", "Commits, PRs, issues"],
-              ["Slack", "Messages, directory sync"],
-              ["Google Calendar", "Meeting detection"],
-              ["Microsoft 365", "Calendar + Teams"],
-              ["Jira", "Project tracking"],
-              ["Linear", "Issue tracking"],
-              ["Notion", "Documentation"],
-              ["Recall.ai", "Meeting bots"],
-            ].map(([name, desc]) => (
+              ["GitHub", "Commits, PRs, issues", false],
+              ["Slack", "Messages, directory sync", false],
+              ["Google Calendar", "Meeting detection", true],
+              ["Microsoft 365", "Calendar + Teams", true],
+              ["Jira", "Project tracking", false],
+              ["Linear", "Issue tracking", false],
+              ["Notion", "Documentation", true],
+              ["Recall.ai", "Meeting bots", false],
+            ].map(([name, desc, comingSoon]) => (
               <div
-                key={name}
-                className="flex items-center gap-3 rounded-xl border border-white/[.08] bg-[#111116] px-4 py-3"
+                key={name as string}
+                className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${
+                  comingSoon
+                    ? "border-white/[.05] bg-white/[.02] opacity-60"
+                    : "border-white/[.08] bg-[#111116]"
+                }`}
               >
                 <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/[.06] text-xs font-bold">
-                  {name[0]}
+                  {(name as string)[0]}
                 </span>
                 <div>
-                  <p className="text-sm font-medium">{name}</p>
-                  <p className="text-xs text-zinc-500">{desc}</p>
+                  <p className="text-sm font-medium">
+                    {name as string}
+                    {comingSoon && (
+                      <span className="ml-2 rounded bg-white/[.08] px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
+                        Coming soon
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-xs text-zinc-500">{desc as string}</p>
                 </div>
               </div>
             ))}
@@ -487,12 +499,12 @@ export default function Landing() {
             <div>
               <Link href="/" className="flex items-center gap-2.5 font-semibold">
                 <span className="grid h-8 w-8 place-items-center rounded-[10px] bg-emerald-300 font-black text-zinc-950">
-                  C
+                  P
                 </span>
-                CloseLoop
+                Pathayo
               </Link>
               <p className="mt-3 text-xs leading-5 text-zinc-600">
-                AI meeting bot + execution tracker. Every decision, tracked to ship.
+                AI meeting bot + execution tracker powered by the CloseLoop agent. Every decision, tracked to ship.
               </p>
             </div>
             <FooterCol
@@ -510,6 +522,8 @@ export default function Landing() {
                 ["Sign up", "/signup"],
                 ["Log in", "/login"],
                 ["Contact", "#contact"],
+                ["Privacy Policy", "/privacy"],
+                ["Terms of Service", "/terms"],
               ]}
             />
             <div>
@@ -528,8 +542,11 @@ export default function Landing() {
             </div>
           </div>
           <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-white/[.06] pt-6 text-xs text-zinc-600 sm:flex-row">
-            <span>© 2026 CloseLoop, Inc. All rights reserved.</span>
-            <span>Powered by pathayo.com</span>
+            <span>© 2026 Pathayo. All rights reserved.</span>
+            <div className="flex gap-4">
+              <Link href="/privacy" className="transition hover:text-emerald-300">Privacy Policy</Link>
+              <Link href="/terms" className="transition hover:text-emerald-300">Terms of Service</Link>
+            </div>
           </div>
         </div>
       </footer>

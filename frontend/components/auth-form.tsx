@@ -61,9 +61,9 @@ export function AuthForm({ mode }: { mode: "login" | "signup" | "forgot" }) {
         <div className="w-full max-w-sm">
           <Link href="/" className="flex items-center gap-2.5 font-semibold">
             <span className="grid h-8 w-8 place-items-center rounded-[10px] bg-emerald-300 font-black text-zinc-950">
-              C
+              P
             </span>
-            CloseLoop
+            Pathayo
           </Link>
 
           <div className="mt-10">
@@ -224,13 +224,13 @@ export function AuthForm({ mode }: { mode: "login" | "signup" | "forgot" }) {
       <aside className="hidden bg-[#101116] p-12 lg:flex lg:flex-col lg:justify-between">
         <p className="text-sm text-zinc-500">EXECUTION INTELLIGENCE</p>
         <blockquote className="max-w-lg text-3xl font-medium leading-[1.25] tracking-tight">
-          &ldquo;CloseLoop made our team&apos;s invisible commitments visible —
+          &ldquo;Pathayo made our team&apos;s invisible commitments visible —
           without adding another meeting.&rdquo;
           <footer className="mt-7 text-sm font-normal text-zinc-500">
             Elena Rossi · VP Operations
           </footer>
         </blockquote>
-        <p className="text-xs text-zinc-600">© 2026 CloseLoop, Inc.</p>
+        <p className="text-xs text-zinc-600">© 2026 Pathayo.</p>
       </aside>
     </main>
   );

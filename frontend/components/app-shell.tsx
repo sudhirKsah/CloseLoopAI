@@ -3,7 +3,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
-  Bell,
   CalendarDays,
   CheckSquare,
   ChevronDown,
@@ -80,9 +79,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className="flex items-center gap-2.5 font-semibold"
           >
             <span className="grid h-8 w-8 place-items-center rounded-[10px] bg-emerald-300 font-black text-zinc-950">
-              C
+              P
             </span>
-            CloseLoop
+            Pathayo
           </Link>
           <button className="lg:hidden" onClick={() => setOpen(false)}>
             <X size={18} />
@@ -133,9 +132,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onSelect={selectWorkspace}
           />
           <div className="ml-auto flex items-center gap-3">
-            <button className="relative grid h-9 w-9 place-items-center rounded-xl border border-white/[.08] bg-white/[.035] text-zinc-400 transition active:scale-95">
-              <Bell size={16} />
-            </button>
             <Link
               href="/settings"
               className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-300 text-zinc-950 transition active:scale-95"

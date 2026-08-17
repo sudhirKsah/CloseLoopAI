@@ -164,7 +164,7 @@ export function PaymentsPage() {
       const order = await createOrder(workspaceId, {
         amount: plan.price,
         currency: plan.currency,
-        description: `CloseLoop AI — ${plan.name} plan (${plan.period})`,
+        description: `Pathayo — ${plan.name} plan (${plan.period})`,
         notes: { plan: plan.id, period: plan.period },
       });
 
@@ -173,7 +173,7 @@ export function PaymentsPage() {
         order_id: order.razorpay_order_id,
         amount: order.amount,
         currency: order.currency,
-        name: "CloseLoop AI",
+        name: "Pathayo",
         description: `${plan.name} plan — ${plan.period}ly subscription`,
         onSuccess: async (response) => {
           try {
@@ -233,7 +233,7 @@ export function PaymentsPage() {
                 and we&apos;ll set you up manually — usually within a few hours.
               </p>
               <a
-                href="mailto:payment@mail.pathayo.com?subject=CloseLoop%20Subscription%20Inquiry"
+                href="mailto:payment@mail.pathayo.com?subject=Pathayo%20Subscription%20Inquiry"
                 className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-emerald-300 hover:underline"
               >
                 <CreditCard size={13} /> payment@mail.pathayo.com
@@ -322,7 +322,7 @@ export function PaymentsPage() {
                 </Button>
               ) : (
                 <a
-                  href={`mailto:payment@mail.pathayo.com?subject=CloseLoop%20${plan.name}%20Plan&body=Hi%20CloseLoop%20team%2C%0A%0AI%27d%20like%20to%20subscribe%20to%20the%20${plan.name}%20plan%20(${formatAmount(plan.price, plan.currency)}/${plan.period}).%0A%0AThanks!`}
+                  href={`mailto:payment@mail.pathayo.com?subject=Pathayo%20${plan.name}%20Plan&body=Hi%20Pathayo%20team%2C%0A%0AI%27d%20like%20to%20subscribe%20to%20the%20${plan.name}%20plan%20(${formatAmount(plan.price, plan.currency)}/${plan.period}).%0A%0AThanks!`}
                   className="mt-4 block"
                 >
                   <Button

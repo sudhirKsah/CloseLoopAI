@@ -706,7 +706,7 @@ function SettingsPage() {
         <Card className="p-5">
           <p className="font-medium">Automation</p>
           <p className="mt-1 text-xs text-zinc-500">
-            Configure how CloseLoop nudges and escalates.
+            Configure how Pathayo nudges and escalates.
           </p>
           <Link className="mt-4 block text-sm text-emerald-300" href="/approvals">
             Review extracted task approvals →
@@ -725,7 +725,7 @@ function SettingsPage() {
             <div>
               <p className="font-medium text-rose-300">Session</p>
               <p className="mt-1 text-xs text-zinc-500">
-                Sign out of your CloseLoop account on this device.
+                Sign out of your Pathayo account on this device.
               </p>
             </div>
             <Button

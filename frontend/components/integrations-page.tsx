@@ -25,12 +25,18 @@ import type { Integration } from "@/lib/types";
 const PROVIDERS = [
   "github",
   "slack",
-  "google_calendar",
-  "microsoft_calendar",
   "jira",
   "linear",
+  "google_calendar",
+  "microsoft_calendar",
   "notion",
 ] as const;
+
+const COMING_SOON: ReadonlySet<string> = new Set([
+  "google_calendar",
+  "microsoft_calendar",
+  "notion",
+]);
 
 const PROVIDER_LABELS: Record<string, string> = {
   google_calendar: "Google Calendar",
@@ -118,10 +124,18 @@ export function IntegrationsPage() {
         {PROVIDERS.map((provider) => {
           const item = integrations.find((x) => x.provider === provider);
           const connected = item?.state === "connected";
+          const comingSoon = COMING_SOON.has(provider);
           return (
-            <Card key={provider} className="p-5">
+            <Card
+              key={provider}
+              className={`p-5 ${comingSoon ? "opacity-60" : ""}`}
+            >
               <div className="flex items-start gap-4">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[.07]">
+                <span
+                  className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${
+                    comingSoon ? "bg-white/[.04] text-zinc-500" : "bg-white/[.07]"
+                  }`}
+                >
                   <ProviderIcon provider={provider} />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -132,13 +146,18 @@ export function IntegrationsPage() {
                         <Check size={11} /> Connected
                       </Badge>
                     )}
+                    {comingSoon && !connected && (
+                      <Badge variant="info">Coming soon</Badge>
+                    )}
                   </div>
                   <p className="mt-1 text-xs text-zinc-500">
-                    {connected
-                      ? item?.last_synced_at
-                        ? `Last synced ${new Date(item.last_synced_at).toLocaleDateString()}`
-                        : "Connected and ready"
-                      : "Not connected"}
+                    {comingSoon && !connected
+                      ? "Integration is on the roadmap and not available yet."
+                      : connected
+                        ? item?.last_synced_at
+                          ? `Last synced ${new Date(item.last_synced_at).toLocaleDateString()}`
+                          : "Connected and ready"
+                        : "Not connected"}
                   </p>
 
                   {connected && item && (
@@ -159,6 +178,10 @@ export function IntegrationsPage() {
                         Manage
                       </Button>
                     </Link>
+                  ) : comingSoon ? (
+                    <Button size="sm" disabled>
+                      Coming soon
+                    </Button>
                   ) : (
                     <Button
                       size="sm"

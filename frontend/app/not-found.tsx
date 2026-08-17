@@ -6,9 +6,9 @@ export default function NotFound() {
       <div className="max-w-md text-center">
         <Link href="/" className="inline-flex items-center gap-2 font-semibold">
           <span className="grid h-8 w-8 place-items-center rounded-[10px] bg-emerald-300 font-black text-zinc-950">
-            C
+            P
           </span>
-          CloseLoop
+          Pathayo
         </Link>
         <p className="mt-12 text-xs font-medium tracking-[.18em] text-emerald-300">
           404 · NOT FOUND
@@ -18,7 +18,7 @@ export default function NotFound() {
         </h1>
         <p className="mt-4 text-sm leading-6 text-zinc-500">
           The page may have moved, or the link is incomplete. Return to
-          CloseLoop and continue where the work is.
+          Pathayo and continue where the work is.
         </p>
         <Link
           href="/dashboard"

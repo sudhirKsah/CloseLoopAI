@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 
 /**
- * Thin client for the CloseLoop backend's kgmemory proxy
+ * Thin client for the Pathayo backend's kgmemory proxy
  * (`/workspaces/{id}/kgmemory/*`). Every call requires the workspace to have
  * connected the Knowledge Graph Memory integration; otherwise the backend
  * returns 409 and these helpers throw.

@@ -64,7 +64,7 @@ export function EscalationRules() {
       </p>
       <h1 className="mt-2 text-3xl font-semibold">Escalation rules</h1>
       <p className="mt-2 text-sm text-zinc-500">
-        Configure the conditions under which CloseLoop nudges or escalates. No
+        Configure the conditions under which Pathayo nudges or escalates. No
         team member gains dashboard access through a rule.
       </p>
       <Card className="mt-7 max-w-2xl p-5">

@@ -49,7 +49,7 @@ export function MeetingCreateDialog({
         open={open}
         onClose={() => setOpen(false)}
         title="Add a meeting"
-        description="CloseLoop will send its Recall bot to the meeting link."
+        description="Pathayo will send its CloseLoop agent to the meeting link."
       >
         <form className="space-y-4" onSubmit={submit}>
           <label className="block text-xs text-zinc-400">
