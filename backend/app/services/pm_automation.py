@@ -84,6 +84,33 @@ async def get_user_by_slack_id(
 async def get_workspace_for_user(
     session: AsyncSession, user_id: uuid.UUID
 ) -> uuid.UUID | None:
+    """Find the workspace for a user that has Slack connected.
+
+    A user may be a member of multiple workspaces, but only one (typically
+    the team workspace) will have Slack integrated. We prefer the workspace
+    that has a connected Slack integration; if none does, fall back to the
+    first workspace.
+    """
+    from ..models.integrations import Integration, IntegrationProvider, IntegrationState
+
+    # Join workspace_members with integrations to find a workspace with Slack
+    rows = (
+        await session.execute(
+            select(WorkspaceMember.workspace_id)
+            .join(
+                Integration,
+                (Integration.workspace_id == WorkspaceMember.workspace_id)
+                & (Integration.provider == IntegrationProvider.SLACK)
+                & (Integration.state == IntegrationState.CONNECTED),
+            )
+            .where(WorkspaceMember.user_id == user_id)
+        )
+    ).scalars().all()
+
+    if rows:
+        return rows[0]
+
+    # Fallback: no workspace with Slack — return first membership
     member = (
         await session.execute(
             select(WorkspaceMember).where(WorkspaceMember.user_id == user_id)
