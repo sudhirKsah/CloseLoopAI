@@ -38,15 +38,15 @@ def send_password_reset_email(to: str, display_name: str, reset_link: str) -> No
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
   <div style="background:#09090b;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:32px;">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;">
-      <span style="display:inline-grid;place-items:center;width:32px;height:32px;border-radius:8px;background:#6ee7b7;color:#09090b;font-weight:900;font-size:14px;">C</span>
-      <span style="color:#fff;font-weight:600;font-size:16px;">CloseLoop</span>
+      <span style="display:inline-grid;place-items:center;width:32px;height:32px;border-radius:8px;background:#6ee7b7;color:#09090b;font-weight:900;font-size:14px;">P</span>
+      <span style="color:#fff;font-weight:600;font-size:16px;">Pathayo</span>
     </div>
     <h1 style="color:#fff;font-size:20px;font-weight:600;margin:0 0 16px;">Reset your password</h1>
     <p style="color:#a1a1aa;font-size:14px;line-height:1.6;margin:0 0 16px;">
       Hi {display_name},
     </p>
     <p style="color:#a1a1aa;font-size:14px;line-height:1.6;margin:0 0 24px;">
-      We received a request to reset your CloseLoop password. Click the button below
+      We received a request to reset your Pathayo password. Click the button below
       to choose a new password. This link expires in 1 hour.
     </p>
     <a href="{reset_link}" style="display:inline-block;background:#6ee7b7;color:#09090b;font-weight:600;font-size:14px;padding:12px 24px;border-radius:12px;text-decoration:none;">
@@ -59,21 +59,21 @@ def send_password_reset_email(to: str, display_name: str, reset_link: str) -> No
   </div>
   {_SUPPORT_FOOTER_HTML}
   <p style="color:#3f3f46;font-size:11px;text-align:center;margin:16px 0 0;">
-    © 2026 CloseLoop, Inc.
+    © 2026 Pathayo.
   </p>
 </div>"""
     text = (
-        f"CloseLoop — Reset your password\n\n"
+        f"Pathayo — Reset your password\n\n"
         f"Hi {display_name},\n\n"
-        f"We received a request to reset your CloseLoop password.\n"
+        f"We received a request to reset your Pathayo password.\n"
         f"Click the link below to choose a new password. "
         f"This link expires in 1 hour.\n\n"
         f"{reset_link}\n\n"
         f"If you didn't request this, you can safely ignore this email.\n\n"
-        f"© 2026 CloseLoop, Inc."
+        f"© 2026 Pathayo."
         f"{_SUPPORT_FOOTER_TEXT}"
     )
-    _send(to, "CloseLoop — Reset your password", html, text)
+    _send(to, "Pathayo — Reset your password", html, text)
 
 
 def send_welcome_email(to: str, display_name: str) -> None:
@@ -82,16 +82,16 @@ def send_welcome_email(to: str, display_name: str) -> None:
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
   <div style="background:#09090b;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:32px;">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;">
-      <span style="display:inline-grid;place-items:center;width:32px;height:32px;border-radius:8px;background:#6ee7b7;color:#09090b;font-weight:900;font-size:14px;">C</span>
-      <span style="color:#fff;font-weight:600;font-size:16px;">CloseLoop</span>
+      <span style="display:inline-grid;place-items:center;width:32px;height:32px;border-radius:8px;background:#6ee7b7;color:#09090b;font-weight:900;font-size:14px;">P</span>
+      <span style="color:#fff;font-weight:600;font-size:16px;">Pathayo</span>
     </div>
-    <h1 style="color:#fff;font-size:20px;font-weight:600;margin:0 0 16px;">Welcome to CloseLoop</h1>
+    <h1 style="color:#fff;font-size:20px;font-weight:600;margin:0 0 16px;">Welcome to Pathayo</h1>
     <p style="color:#a1a1aa;font-size:14px;line-height:1.6;margin:0 0 16px;">
       Hi {display_name},
     </p>
     <p style="color:#a1a1aa;font-size:14px;line-height:1.6;margin:0 0 24px;">
-      Your workspace is ready. Send an AI bot to your next meeting and
-      CloseLoop will track every decision until it ships.
+      Your workspace is ready. Send the CloseLoop AI agent to your next meeting
+      and Pathayo will track every decision until it ships.
     </p>
     <a href="{settings.frontend_url}/dashboard" style="display:inline-block;background:#6ee7b7;color:#09090b;font-weight:600;font-size:14px;padding:12px 24px;border-radius:12px;text-decoration:none;">
       Go to dashboard
@@ -99,18 +99,18 @@ def send_welcome_email(to: str, display_name: str) -> None:
   </div>
   {_SUPPORT_FOOTER_HTML}
   <p style="color:#3f3f46;font-size:11px;text-align:center;margin:16px 0 0;">
-    © 2026 CloseLoop, Inc.
+    © 2026 Pathayo.
   </p>
 </div>"""
     text = (
-        f"Welcome to CloseLoop\n\n"
+        f"Welcome to Pathayo\n\n"
         f"Hi {display_name},\n\n"
         f"Your workspace is ready. Visit {settings.frontend_url}/dashboard "
         f"to get started.\n\n"
-        f"© 2026 CloseLoop, Inc."
+        f"© 2026 Pathayo."
         f"{_SUPPORT_FOOTER_TEXT}"
     )
-    _send(to, "Welcome to CloseLoop", html, text)
+    _send(to, "Welcome to Pathayo", html, text)
 
 
 def send_verification_email(to: str, display_name: str, verify_link: str) -> None:
@@ -119,15 +119,15 @@ def send_verification_email(to: str, display_name: str, verify_link: str) -> Non
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
   <div style="background:#09090b;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:32px;">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;">
-      <span style="display:inline-grid;place-items:center;width:32px;height:32px;border-radius:8px;background:#6ee7b7;color:#09090b;font-weight:900;font-size:14px;">C</span>
-      <span style="color:#fff;font-weight:600;font-size:16px;">CloseLoop</span>
+      <span style="display:inline-grid;place-items:center;width:32px;height:32px;border-radius:8px;background:#6ee7b7;color:#09090b;font-weight:900;font-size:14px;">P</span>
+      <span style="color:#fff;font-weight:600;font-size:16px;">Pathayo</span>
     </div>
     <h1 style="color:#fff;font-size:20px;font-weight:600;margin:0 0 16px;">Verify your email</h1>
     <p style="color:#a1a1aa;font-size:14px;line-height:1.6;margin:0 0 16px;">
       Hi {display_name},
     </p>
     <p style="color:#a1a1aa;font-size:14px;line-height:1.6;margin:0 0 24px;">
-      Please verify your email address to activate your CloseLoop account.
+      Please verify your email address to activate your Pathayo account.
       Click the button below to confirm. This link expires in 24 hours.
     </p>
     <a href="{verify_link}" style="display:inline-block;background:#6ee7b7;color:#09090b;font-weight:600;font-size:14px;padding:12px 24px;border-radius:12px;text-decoration:none;">
@@ -139,17 +139,17 @@ def send_verification_email(to: str, display_name: str, verify_link: str) -> Non
   </div>
   {_SUPPORT_FOOTER_HTML}
   <p style="color:#3f3f46;font-size:11px;text-align:center;margin:16px 0 0;">
-    © 2026 CloseLoop, Inc.
+    © 2026 Pathayo.
   </p>
 </div>"""
     text = (
-        f"CloseLoop — Verify your email\n\n"
+        f"Pathayo — Verify your email\n\n"
         f"Hi {display_name},\n\n"
-        f"Please verify your email address to activate your CloseLoop account.\n"
+        f"Please verify your email address to activate your Pathayo account.\n"
         f"Click the link below to confirm. This link expires in 24 hours.\n\n"
         f"{verify_link}\n\n"
         f"If you didn't create an account, you can safely ignore this email.\n\n"
-        f"© 2026 CloseLoop, Inc."
+        f"© 2026 Pathayo."
         f"{_SUPPORT_FOOTER_TEXT}"
     )
-    _send(to, "CloseLoop — Verify your email", html, text)
+    _send(to, "Pathayo — Verify your email", html, text)

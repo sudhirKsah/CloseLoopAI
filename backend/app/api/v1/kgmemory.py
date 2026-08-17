@@ -1,8 +1,8 @@
-"""HTTP proxy from CloseLoop to the kgmemory microservice.
+"""HTTP proxy from Pathayo to the kgmemory microservice.
 
 Every workspace gets a thin pass-through API here so the frontend can reach the
 memory service's PM-brain, monitor, planning, sprints, stakeholders, team,
-reports, and people endpoints through the CloseLoop backend (using the
+reports, and people endpoints through the Pathayo backend (using the
 workspace's own JWT auth) instead of needing the raw kgmemory API key in the
 browser.
 
@@ -570,7 +570,7 @@ async def founder_digest(body: FounderDigestRequest, client=Depends(_client)) ->
 # ── PM chat history ────────────────────────────────────────────────────────
 #
 # Persisted per (workspace, user) so each dashboard user keeps their own
-# thread with the AI PM. These endpoints only touch the CloseLoop database
+# thread with the AI PM. These endpoints only touch the Pathayo database
 # (no kgmemory client required), so chat history survives even if the
 # memory integration is temporarily disconnected.
 

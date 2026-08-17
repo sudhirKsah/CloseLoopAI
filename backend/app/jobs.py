@@ -421,7 +421,7 @@ def deliver_reminder(reminder_id: str) -> dict:
                         )
                 if reminder.channel == "email":
                     await asyncio.to_thread(
-                        send_email, user.email, "CloseLoop task update", reminder.body
+                        send_email, user.email, "Pathayo task update", reminder.body
                     )
                 reminder.status, reminder.sent_at = DeliveryStatus.SENT, datetime.now(
                     UTC

@@ -1,15 +1,15 @@
 """Client for the kgmemory microservice (the team's knowledge-graph "PM brain").
 
-kgmemory is a separate FastAPI service (see ../../../memory-closeloop) that
+kgmemory is a separate FastAPI service (see ../../../memory-pinchfast) that
 ingests conversation facts into a per-organization knowledge graph and
 exposes decision-support endpoints: hybrid context search, person
 reliability, project health, and an AI project-manager reasoning layer
-(`/pm/decide`, `/pm/check-in`). CloseLoop treats it as its long-term memory
+(`/pm/decide`, `/pm/check-in`). Pathayo treats it as its long-term memory
 layer: meeting transcripts are pushed into kgmemory so that decisions,
 commitments, and engineer reliability accumulate across meetings instead of
 being scoped to a single extraction.
 
-Each CloseLoop workspace that wants this maps 1:1 to a kgmemory organization,
+Each Pathayo workspace that wants this maps 1:1 to a kgmemory organization,
 via an `Integration(provider=KGMEMORY)` row whose `config` holds the
 kgmemory org's API key (Fernet-encrypted, same as other provider secrets)
 under `api_key_encrypted`.
@@ -562,7 +562,7 @@ async def provision_workspace(
         )
     admin = KGMemoryAdminClient()
     slug = _provisioning_slug(workspace_id)
-    name = f"CloseLoop {_uuid.UUID(str(workspace_id)).hex[:8]}"
+    name = f"Pathayo {_uuid.UUID(str(workspace_id)).hex[:8]}"
     try:
         org = await admin.create_org(name=name, slug=slug)
     except KGMemoryError as error:

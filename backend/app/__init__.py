@@ -1,1 +1,1 @@
-"""CloseLoop execution intelligence service."""
+"""Pathayo execution intelligence service."""

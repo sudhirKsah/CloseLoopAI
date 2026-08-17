@@ -42,13 +42,13 @@ async def slack_actions(
         )
     ).scalar_one_or_none()
     if not identity:
-        raise HTTPException(403, "Slack user is not linked to a CloseLoop user")
+        raise HTTPException(403, "Slack user is not linked to a Pathayo user")
     if action_id == "closeloop_task_edit":
         return {
             "response_action": "push",
             "view": {
                 "type": "modal",
-                "title": {"type": "plain_text", "text": "Edit in CloseLoop"},
+                "title": {"type": "plain_text", "text": "Edit in Pathayo"},
                 "close": {"type": "plain_text", "text": "Close"},
                 "blocks": [],
             },

@@ -88,7 +88,7 @@ async def current_user(
         ).scalar_one_or_none()
 
     if not user:
-        raise HTTPException(403, "No CloseLoop dashboard access")
+        raise HTTPException(403, "No Pathayo dashboard access")
     return user
 
 

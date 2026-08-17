@@ -122,7 +122,7 @@ class WeeklyReportService:
             await __import__("asyncio").to_thread(
                 send_email,
                 user.email,
-                "CloseLoop weekly execution report",
+                "Pathayo weekly execution report",
                 f"Your report is ready: {report.pdf_url}",
             )
         return len(admins)
@@ -142,4 +142,4 @@ class WeeklyReportService:
                 metrics["organization_summary"]["missed"],
             ]
         )
-        return f"<html><style>body{{font-family:Arial;padding:36px;color:#171717}}h1{{color:#1b7657}}.cards{{display:flex;gap:12px}}.card{{padding:16px;background:#f4f5f6;border-radius:8px}}.chart{{display:flex;gap:16px;align-items:end;height:180px}}.chart div{{width:64px;background:#74dfbb}}small{{color:#666}}</style><h1>CloseLoop Weekly Execution Report</h1><p>{start.date()} – {end.date()}</p><div class='cards'><div class='card'>Execution score<br><b>{metrics['execution_score']}</b></div><div class='card'>Completed<br><b>{metrics['organization_summary']['completed']}</b></div><div class='card'>Missed<br><b>{metrics['organization_summary']['missed']}</b></div></div><h2>Execution chart</h2><div class='chart'>{chart}</div><h2>Insights</h2><ul>{rows}</ul><h2>Recommendations</h2><ul>{''.join(f'<li>{x}</li>' for x in metrics['recommendations'])}</ul></html>"
+        return f"<html><style>body{{font-family:Arial;padding:36px;color:#171717}}h1{{color:#1b7657}}.cards{{display:flex;gap:12px}}.card{{padding:16px;background:#f4f5f6;border-radius:8px}}.chart{{display:flex;gap:16px;align-items:end;height:180px}}.chart div{{width:64px;background:#74dfbb}}small{{color:#666}}</style><h1>Pathayo Weekly Execution Report</h1><p>{start.date()} – {end.date()}</p><div class='cards'><div class='card'>Execution score<br><b>{metrics['execution_score']}</b></div><div class='card'>Completed<br><b>{metrics['organization_summary']['completed']}</b></div><div class='card'>Missed<br><b>{metrics['organization_summary']['missed']}</b></div></div><h2>Execution chart</h2><div class='chart'>{chart}</div><h2>Insights</h2><ul>{rows}</ul><h2>Recommendations</h2><ul>{''.join(f'<li>{x}</li>' for x in metrics['recommendations'])}</ul></html>"
