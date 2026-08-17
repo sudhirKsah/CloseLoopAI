@@ -258,6 +258,8 @@ async def callback(
             setattr(credential, key, value)
     else:
         session.add(OAuthCredential(**values))
+    # Always mark the integration as connected after a successful token exchange
+    integration.state = IntegrationState.CONNECTED
     if provider == IntegrationProvider.JIRA:
         resources = await JiraClient().resources(tokens["access_token"])
         integration.config = (
@@ -265,6 +267,17 @@ async def callback(
             if resources
             else {}
         )
+    if provider == IntegrationProvider.LINEAR:
+        # Fetch teams and store the first team_id for convenience
+        try:
+            teams = await LinearClient().teams(tokens["access_token"])
+            integration.config = {
+                "team_id": teams[0]["id"] if teams else None,
+                "team_name": teams[0]["name"] if teams else None,
+                "teams": teams,
+            }
+        except Exception:
+            integration.config = {}
     if provider == IntegrationProvider.SLACK:
         integration.external_account_id = tokens.get("team", {}).get("id", "default")
         integration.config = {"team": tokens.get("team", {})}

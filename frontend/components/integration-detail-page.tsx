@@ -67,6 +67,7 @@ export function IntegrationDetailPage({ integrationId }: { integrationId: string
     workspaceId ? `/workspaces/${workspaceId}/integrations` : "",
   );
   const [busy, setBusy] = useState<string>();
+  const [showDisconnect, setShowDisconnect] = useState(false);
 
   const integration = q.data?.find((i) => i.id === integrationId);
   const provider = integration?.provider ?? "";
@@ -74,7 +75,7 @@ export function IntegrationDetailPage({ integrationId }: { integrationId: string
 
   const disconnect = async () => {
     if (!integration) return;
-    if (!confirm(`Disconnect ${label(provider)}?`)) return;
+    setShowDisconnect(false);
     setBusy("disconnect");
     try {
       await api(`/integrations/${integration.id}`, { method: "DELETE" });
@@ -347,7 +348,7 @@ export function IntegrationDetailPage({ integrationId }: { integrationId: string
           <Button
             variant="ghost"
             disabled={busy === "disconnect"}
-            onClick={() => void disconnect()}
+            onClick={() => setShowDisconnect(true)}
           >
             {busy === "disconnect" ? "Disconnecting…" : "Disconnect"}
           </Button>
@@ -597,6 +598,28 @@ export function IntegrationDetailPage({ integrationId }: { integrationId: string
             })}
           </div>
         )}
+      </Dialog>
+
+      {/* Disconnect confirmation dialog */}
+      <Dialog
+        open={showDisconnect}
+        onClose={() => setShowDisconnect(false)}
+        title={`Disconnect ${label(provider)}?`}
+        description="This will remove the integration and all stored credentials. You can reconnect later."
+        maxWidth="max-w-md"
+      >
+        <div className="flex justify-end gap-3 pt-2">
+          <Button variant="ghost" onClick={() => setShowDisconnect(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            disabled={busy === "disconnect"}
+            onClick={() => void disconnect()}
+          >
+            {busy === "disconnect" ? "Disconnecting…" : "Disconnect"}
+          </Button>
+        </div>
       </Dialog>
     </main>
   );

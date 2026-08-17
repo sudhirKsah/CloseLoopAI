@@ -421,7 +421,7 @@ function ChatTab({
                                   a.urgency === "high" ? "text-red-400" :
                                   a.urgency === "medium" ? "text-amber-400" : "text-emerald-400"
                                 }`}>
-                                  {a.urgency.toUpperCase()}
+                                  {(a.urgency || "low").toUpperCase()}
                                 </span>
                                 <span className="text-xs text-zinc-500">{a.action.replace(/_/g, " ")}</span>
                                 {status === "done" && <CheckCircle2 size={11} className="text-emerald-400" />}
