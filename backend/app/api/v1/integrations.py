@@ -19,7 +19,7 @@ from ...models.integrations import (
 from ...services.credentials import CredentialVault
 from ...services.jira import JiraClient
 from ...services.linear import LinearClient
-from ...services.github import GithubClient, sync_repo_activity
+from ...services.github import GithubClient, sync_repo_activity, backfill_repo_to_kgmemory
 from ...services.calendar import CalendarClient, sync_calendar
 from ...services.slack import SlackClient
 from ...services.notion import NotionClient
@@ -340,6 +340,18 @@ async def sync_github_repository(
     return {"inserted": await sync_repo_activity(session, repo)}
 
 
+@router.post("/github/repos/{repo_id}/sync-memory")
+async def sync_github_repo_to_memory(
+    repo_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+) -> dict:
+    """Backfill existing GitHub repo activity into the kgmemory knowledge graph."""
+    repo = await session.get(GithubRepo, repo_id)
+    if not repo:
+        raise HTTPException(404, "Repository not found")
+    pushed = await backfill_repo_to_kgmemory(session, repo)
+    return {"pushed_to_memory": pushed}
+
+
 @router.post("/calendar/{integration_id}/sync")
 async def sync_connected_calendar(
     integration_id: uuid.UUID,
@@ -491,6 +503,67 @@ async def jira_issues(
     return {"issues": simplified, "project_key": project_key}
 
 
+@router.post("/jira/{integration_id}/sync-memory")
+async def sync_jira_to_memory(
+    integration_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+) -> dict:
+    """Push Jira issues from the selected project into kgmemory knowledge graph."""
+    integration = await session.get(Integration, integration_id)
+    if not integration or integration.provider != IntegrationProvider.JIRA:
+        raise HTTPException(404, "Jira integration not found")
+    project_key = integration.config.get("project_key")
+    if not project_key:
+        raise HTTPException(400, "No Jira project selected")
+
+    from ...services.kgmemory import get_client_for_workspace
+    import logging
+    logger = logging.getLogger(__name__)
+
+    client = await get_client_for_workspace(session, str(integration.workspace_id))
+    if client is None:
+        raise HTTPException(400, "Knowledge graph memory is not connected for this workspace")
+
+    token = await JiraClient().token_for(session, integration)
+    issues = await JiraClient().search_issues(
+        token, integration.config["cloud_id"], project_key
+    )
+
+    messages = []
+    for issue in issues:
+        fields = issue.get("fields", {})
+        assignee = fields.get("assignee")
+        assignee_name = assignee.get("displayName", "Unassigned") if assignee else "Unassigned"
+        status = fields.get("status", {}).get("name", "Unknown")
+        priority = fields.get("priority", {}).get("name", "None")
+        summary = fields.get("summary", "")
+        key = issue.get("key", "")
+        text = (
+            f"[Jira] Issue {key} '{summary}' — assignee: {assignee_name}, "
+            f"status: {status}, priority: {priority}, project: {project_key}"
+        )
+        messages.append({
+            "message": text,
+            "speaker": assignee_name,
+            "speaker_role": "engineer",
+            "channel": "jira",
+            "session_id": f"jira-{key}",
+            "project": project_key,
+            "timestamp": fields.get("updated") or fields.get("created"),
+        })
+
+    pushed = 0
+    try:
+        for i in range(0, len(messages), 500):
+            batch = messages[i : i + 500]
+            await client.ingest_batch(batch)
+            pushed += len(batch)
+        logger.info(f"Pushed {pushed} Jira issues to kgmemory for workspace {integration.workspace_id}")
+    except Exception as exc:
+        logger.warning(f"Jira→kgmemory sync failed: {exc}")
+        raise HTTPException(502, f"kgmemory sync failed: {exc}")
+    return {"pushed_to_memory": pushed}
+
+
 @router.post("/jira/{integration_id}/issues")
 async def create_jira_issue(
     integration_id: uuid.UUID,
@@ -553,6 +626,62 @@ async def select_linear_team(
     integration.config = {**integration.config, "team_id": team_id}
     await session.commit()
     return {"selected": team_id}
+
+
+@router.post("/linear/{integration_id}/sync-memory")
+async def sync_linear_to_memory(
+    integration_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+) -> dict:
+    """Push Linear issues from the selected team into kgmemory knowledge graph."""
+    integration = await session.get(Integration, integration_id)
+    if not integration or integration.provider != IntegrationProvider.LINEAR:
+        raise HTTPException(404, "Linear integration not found")
+    team_id = integration.config.get("team_id")
+    if not team_id:
+        raise HTTPException(400, "No Linear team selected")
+
+    from ...services.kgmemory import get_client_for_workspace
+    import logging
+    logger = logging.getLogger(__name__)
+
+    client = await get_client_for_workspace(session, str(integration.workspace_id))
+    if client is None:
+        raise HTTPException(400, "Knowledge graph memory is not connected for this workspace")
+
+    token = await LinearClient().token_for(session, integration)
+    issues = await LinearClient().team_issues(token, team_id)
+
+    messages = []
+    for issue in issues:
+        identifier = issue.get("identifier", "")
+        title = issue.get("title", "")
+        state = (issue.get("state") or {}).get("name", "Unknown")
+        assignee = (issue.get("assignee") or {}).get("name", "Unassigned")
+        priority = issue.get("priority", "None")
+        text = (
+            f"[Linear] Issue {identifier} '{title}' — assignee: {assignee}, "
+            f"status: {state}, priority: {priority}"
+        )
+        messages.append({
+            "message": text,
+            "speaker": assignee,
+            "speaker_role": "engineer",
+            "channel": "linear",
+            "session_id": f"linear-{identifier}",
+            "timestamp": issue.get("updatedAt") or issue.get("createdAt"),
+        })
+
+    pushed = 0
+    try:
+        for i in range(0, len(messages), 500):
+            batch = messages[i : i + 500]
+            await client.ingest_batch(batch)
+            pushed += len(batch)
+        logger.info(f"Pushed {pushed} Linear issues to kgmemory for workspace {integration.workspace_id}")
+    except Exception as exc:
+        logger.warning(f"Linear→kgmemory sync failed: {exc}")
+        raise HTTPException(502, f"kgmemory sync failed: {exc}")
+    return {"pushed_to_memory": pushed}
 
 
 @router.delete("/{integration_id}", status_code=204)

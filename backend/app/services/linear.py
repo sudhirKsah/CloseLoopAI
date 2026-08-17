@@ -93,6 +93,15 @@ class LinearClient:
             "teams"
         ]["nodes"]
 
+    async def team_issues(self, token: str, team_id: str, limit: int = 100) -> list[dict]:
+        """List issues for a team from Linear."""
+        query = (
+            '{ team(id: "%s") { issues(first: %d) { nodes { id identifier title state { name } assignee { name } priority updatedAt createdAt } } } }'
+            % (team_id, limit)
+        )
+        result = await self.graphql(token, query)
+        return (result.get("team") or {}).get("issues", {}).get("nodes", [])
+
     async def create_issue(
         self,
         token: str,

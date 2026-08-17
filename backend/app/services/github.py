@@ -199,6 +199,65 @@ def _activity_author(payload: dict) -> str | None:
     return (payload.get("author") or payload.get("user") or {}).get("login")
 
 
+def _format_activity_for_kg(
+    repo: GithubRepo, kind: str, payload: dict, actor_name: str | None
+) -> dict:
+    """Format a GitHub activity as an ingest message for kgmemory.
+
+    The PM brain can then extract facts like "Dave shipped feature X" or
+    "PR #42 was merged resolving issue #17" from commit/PR/issue text.
+    """
+    actor = actor_name or _activity_author(payload) or "unknown"
+    repo_name = repo.full_name
+
+    if kind == "commit":
+        message = (payload.get("commit") or {}).get("message", "")
+        sha = (payload.get("sha") or "")[:7]
+        text = f"[GitHub] {actor} pushed commit {sha} to {repo_name}: {message}"
+    elif kind == "pull_request":
+        pr_num = payload.get("number")
+        pr_title = payload.get("title", "")
+        pr_state = payload.get("state", "")
+        text = f"[GitHub] {actor} opened pull request #{pr_num} '{pr_title}' in {repo_name} (state: {pr_state})"
+    elif kind == "pull_request_merged":
+        pr_num = payload.get("number")
+        pr_title = payload.get("title", "")
+        text = f"[GitHub] {actor} merged pull request #{pr_num} '{pr_title}' in {repo_name}"
+    elif kind == "issue_closed":
+        issue_num = payload.get("number")
+        issue_title = payload.get("title", "")
+        text = f"[GitHub] {actor} closed issue #{issue_num} '{issue_title}' in {repo_name}"
+    else:
+        text = f"[GitHub] {actor} performed {kind} in {repo_name}"
+
+    return {
+        "message": text,
+        "speaker": actor,
+        "speaker_role": "engineer",
+        "channel": "github",
+        "session_id": f"gh-{repo.id}-{kind}-{payload.get('node_id') or payload.get('sha') or payload.get('id')}",
+        "project": repo_name,
+        "timestamp": _activity_timestamp(kind, payload).isoformat() if _activity_timestamp(kind, payload) else None,
+    }
+
+
+async def _push_activity_to_kgmemory(
+    session: AsyncSession, workspace_id: str, message: dict
+) -> None:
+    """Best-effort push of a GitHub activity to kgmemory for the workspace's org.
+    Silently skips if kgmemory is not connected or the push fails."""
+    from .kgmemory import get_client_for_workspace
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        client = await get_client_for_workspace(session, str(workspace_id))
+        if client is None:
+            return
+        await client.ingest(message)
+    except Exception as exc:
+        logger.debug(f"kgmemory push skipped for GitHub activity in {workspace_id}: {exc}")
+
+
 async def ingest_activity(
     session: AsyncSession,
     repo: GithubRepo,
@@ -206,9 +265,9 @@ async def ingest_activity(
     payload: dict,
     workspace_id,
 ) -> bool:
-    """Idempotently store one activity and match it to tasks. Shared by the
-    webhook (primary) and the polling fallback. Returns True if newly inserted.
-    Caller is responsible for committing."""
+    """Idempotently store one activity, match it to tasks, and push to kgmemory.
+    Shared by the webhook (primary) and the polling fallback. Returns True if
+    newly inserted. Caller is responsible for committing."""
     external_id = str(payload.get("node_id") or payload.get("sha") or payload.get("id"))
     if not external_id or external_id == "None":
         return False
@@ -223,6 +282,17 @@ async def ingest_activity(
     if exists:
         return False
     actor_id = await _resolve_actor(session, workspace_id, _activity_author(payload))
+    # Resolve actor display name for kgmemory
+    actor_name = None
+    if actor_id:
+        from ..models.core import WorkspaceMember
+        member = (
+            await session.execute(
+                select(WorkspaceMember).where(WorkspaceMember.id == actor_id)
+            )
+        ).scalar_one_or_none()
+        if member and member.display_name:
+            actor_name = member.display_name
     activity = GithubActivity(
         repo_id=repo.id,
         external_id=external_id,
@@ -234,6 +304,9 @@ async def ingest_activity(
     session.add(activity)
     await session.flush()
     await map_activity(session, activity, repo)
+    # Push to kgmemory (best-effort, non-blocking)
+    kg_message = _format_activity_for_kg(repo, kind, payload, actor_name)
+    await _push_activity_to_kgmemory(session, workspace_id, kg_message)
     return True
 
 
@@ -252,6 +325,65 @@ async def sync_repo_activity(session: AsyncSession, repo: GithubRepo) -> int:
             inserted += 1
     await session.commit()
     return inserted
+
+
+async def backfill_repo_to_kgmemory(
+    session: AsyncSession, repo: GithubRepo, limit: int = 500
+) -> int:
+    """Push existing stored GitHub activities for a repo to kgmemory in one batch.
+    Useful for backfilling repos that had activity before kgmemory was connected.
+    Returns the number of activities pushed."""
+    from .kgmemory import get_client_for_workspace
+    import logging
+    logger = logging.getLogger(__name__)
+
+    integration = await session.get(Integration, repo.integration_id)
+    if not integration:
+        return 0
+
+    client = await get_client_for_workspace(session, str(integration.workspace_id))
+    if client is None:
+        return 0
+
+    activities = (
+        await session.execute(
+            select(GithubActivity)
+            .where(GithubActivity.repo_id == repo.id)
+            .order_by(GithubActivity.occurred_at.desc())
+            .limit(limit)
+        )
+    ).scalars().all()
+
+    if not activities:
+        return 0
+
+    messages = []
+    for act in activities:
+        actor_name = None
+        if act.actor_id:
+            from ..models.core import WorkspaceMember
+            member = (
+                await session.execute(
+                    select(WorkspaceMember).where(WorkspaceMember.id == act.actor_id)
+                )
+            ).scalar_one_or_none()
+            if member and member.display_name:
+                actor_name = member.display_name
+        msg = _format_activity_for_kg(repo, act.activity_type, act.payload or {}, actor_name)
+        if act.occurred_at:
+            msg["timestamp"] = act.occurred_at.isoformat()
+        messages.append(msg)
+
+    try:
+        # Batch ingest (up to 500 at a time)
+        for i in range(0, len(messages), 500):
+            batch = messages[i : i + 500]
+            await client.ingest_batch(batch)
+        logger.info(f"Backfilled {len(messages)} GitHub activities to kgmemory for {repo.full_name}")
+        return len(messages)
+    except Exception as exc:
+        logger.warning(f"kgmemory backfill failed for {repo.full_name}: {exc}")
+        return 0
 
 
 def activities_from_webhook(
