@@ -24,6 +24,7 @@ from .api.v1.members import router as members_router
 from .api.v1.github_webhooks import router as github_webhooks_router
 from .api.v1.kgmemory import router as kgmemory_router
 from .api.v1.payments import router as payments_router
+from .api.v1.admin import router as admin_router
 from .db.base import Base
 from .db.session import engine
 
@@ -74,6 +75,7 @@ app.include_router(members_router, prefix="/api/v1")
 app.include_router(github_webhooks_router, prefix="/api/v1")
 app.include_router(kgmemory_router, prefix="/api/v1")
 app.include_router(payments_router, prefix="/api/v1")
+app.include_router(admin_router, prefix="/api/v1")
 
 
 @app.get("/health")

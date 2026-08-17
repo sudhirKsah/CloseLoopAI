@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     razorpay_key_secret: str = ""
     razorpay_webhook_secret: str = ""
     razorpay_currency: str = "INR"
+    # Trial / billing
+    trial_days: int = 7
+    # Comma-separated list of email addresses that are automatically made
+    # platform admins on signup.  Useful for bootstrapping the first admin.
+    platform_admin_emails: str = ""
     # cors_origins: list[str] = [
     #     "http://localhost:3000",
     # ]

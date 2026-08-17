@@ -22,6 +22,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/components/workspace-provider";
 import { useAuth } from "@/components/auth-provider";
+import { useSubscription } from "@/components/subscription-provider";
 const links = [
   ["Overview", "/dashboard", LayoutDashboard],
   ["Meetings", "/meetings", CalendarDays],
@@ -39,10 +40,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname(),
     [open, setOpen] = useState(false),
     { me, workspace, selectWorkspace } = useWorkspace(),
-    { logout } = useAuth();
+    { logout } = useAuth(),
+    { sub } = useSubscription();
+  const allLinks = sub?.is_platform_admin
+    ? [...links, ["Admin", "/admin", ShieldCheck] as const]
+    : links;
   const nav = (
     <nav className="space-y-1">
-      {links.map(([label, href, Icon]) => (
+      {allLinks.map(([label, href, Icon]) => (
         <Link
           onClick={() => setOpen(false)}
           key={href}
@@ -132,6 +137,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onSelect={selectWorkspace}
           />
           <div className="ml-auto flex items-center gap-3">
+            <TrialBadge />
             <Link
               href="/settings"
               className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-300 text-zinc-950 transition active:scale-95"
@@ -143,6 +149,36 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {children}
       </main>
     </div>
+  );
+}
+
+function TrialBadge() {
+  const { sub } = useSubscription();
+  if (!sub || sub.is_platform_admin) return null;
+  // Hide badge for lifetime or long-paid plans
+  if (sub.plan === "lifetime") return null;
+  if ((sub.plan === "yearly" || sub.plan === "monthly") && sub.days_remaining > 30)
+    return null;
+  const days = sub.days_remaining;
+  const isExpired = !sub.allowed;
+  const isUrgent = days <= 2 && !isExpired;
+  return (
+    <Link
+      href="/payments"
+      className={`hidden rounded-lg border px-2.5 py-1.5 text-xs font-medium transition sm:block ${
+        isExpired
+          ? "border-red-400/30 bg-red-400/10 text-red-300"
+          : isUrgent
+            ? "border-amber-300/30 bg-amber-300/10 text-amber-200"
+            : "border-white/[.08] bg-white/[.04] text-zinc-400"
+      }`}
+    >
+      {isExpired
+        ? "Trial ended — Subscribe"
+        : days === 0
+          ? "Trial ends today"
+          : `${days} day${days === 1 ? "" : "s"} left`}
+    </Link>
   );
 }
 

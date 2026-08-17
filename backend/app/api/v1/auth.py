@@ -94,6 +94,10 @@ async def signup(
         password_hash=_hash_password(body.password),
         is_login_enabled=True,
     )
+    # Auto-grant platform admin if the email is in the bootstrap list
+    admin_emails = {e.strip().lower() for e in settings.platform_admin_emails.split(",") if e.strip()}
+    if user.email.lower() in admin_emails:
+        user.is_platform_admin = True
     session.add(user)
     await session.flush()
 
@@ -113,6 +117,20 @@ async def signup(
             workspace_id=workspace.id, user_id=user.id, role=MemberRole.OWNER
         )
     )
+    await session.flush()
+
+    # Create a 7-day trial subscription for the workspace
+    from datetime import datetime, timedelta, UTC
+    from ...models.subscription import Subscription, PlanTier, SubscriptionStatus
+    now = datetime.now(UTC)
+    sub = Subscription(
+        workspace_id=workspace.id,
+        plan=PlanTier.TRIAL,
+        status=SubscriptionStatus.ACTIVE,
+        trial_start=now,
+        trial_end=now + timedelta(days=settings.trial_days),
+    )
+    session.add(sub)
     await session.flush()
 
     from ...services.escalation_rules import seed_default_rules
@@ -345,6 +363,7 @@ async def me(
         "email": user.email,
         "name": user.display_name,
         "is_email_verified": user.is_email_verified,
+        "is_platform_admin": user.is_platform_admin,
         "notification_preferences": user.notification_preferences,
         "workspaces": [
             {
@@ -356,6 +375,39 @@ async def me(
             for workspace, member in rows
         ],
     }
+
+
+@router.get("/me/subscription")
+async def my_subscription(
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Return subscription status for the user's first workspace.
+
+    The frontend uses this to decide whether to show the billing wall
+    or the normal app.
+    """
+    from ...services.billing import check_access
+    # Find the user's first workspace
+    rows = (
+        await session.execute(
+            select(Workspace)
+            .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
+            .where(WorkspaceMember.user_id == user.id)
+            .limit(1)
+        )
+    ).scalars().all()
+    if not rows:
+        return {
+            "allowed": True,  # no workspace yet — let them create one
+            "plan": "trial",
+            "status": "active",
+            "trial_end": None,
+            "paid_until": None,
+            "days_remaining": 0,
+            "is_platform_admin": user.is_platform_admin,
+        }
+    return await check_access(session, rows[0].id, user)
 
 
 @router.post("/bootstrap")

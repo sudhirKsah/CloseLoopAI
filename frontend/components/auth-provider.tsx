@@ -3,7 +3,12 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 
-type AuthUser = { id: string; email: string; name: string };
+type AuthUser = {
+  id: string;
+  email: string;
+  name: string;
+  is_platform_admin?: boolean;
+};
 type AuthState = {
   user: AuthUser | null;
   loading: boolean;
@@ -45,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
-      const me = await api<{ id: string; email: string; name: string }>("/auth/me");
+      const me = await api<{ id: string; email: string; name: string; is_platform_admin?: boolean }>("/auth/me");
       setUser(me);
       setToken(stored);
     } catch {

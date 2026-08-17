@@ -11,6 +11,9 @@ const PROTECTED_PATHS = [
   "/integrations",
   "/reports",
   "/settings",
+  "/admin",
+  "/memory",
+  "/payments",
 ];
 
 export function middleware(request: NextRequest) {

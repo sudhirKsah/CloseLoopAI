@@ -71,6 +71,9 @@ class User(UUIDPrimaryKey, Timestamped, Base):
     is_email_verified: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
+    is_platform_admin: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
 
 
 class ExternalIdentity(UUIDPrimaryKey, Timestamped, Base):

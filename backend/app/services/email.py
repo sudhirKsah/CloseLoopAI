@@ -153,3 +153,27 @@ def send_verification_email(to: str, display_name: str, verify_link: str) -> Non
         f"{_SUPPORT_FOOTER_TEXT}"
     )
     _send(to, "Pathayo — Verify your email", html, text)
+
+
+def send_admin_email(to: str, subject: str, body_html: str, body_text: str | None = None) -> None:
+    """Send an arbitrary email from the admin panel.
+
+    Wraps the provided body in the Pathayo email template so it looks
+    consistent with other emails.
+    """
+    html = f"""\
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+  <div style="background:#09090b;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:32px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;">
+      <span style="display:inline-grid;place-items:center;width:32px;height:32px;border-radius:8px;background:#6ee7b7;color:#09090b;font-weight:900;font-size:14px;">P</span>
+      <span style="color:#fff;font-weight:600;font-size:16px;">Pathayo</span>
+    </div>
+    {body_html}
+  </div>
+  {_SUPPORT_FOOTER_HTML}
+  <p style="color:#3f3f46;font-size:11px;text-align:center;margin:16px 0 0;">
+    © 2026 Pathayo.
+  </p>
+</div>"""
+    text = body_text or body_html
+    _send(to, subject, html, text)

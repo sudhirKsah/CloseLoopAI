@@ -20,11 +20,14 @@ import {
   CheckCircle2,
   AlertCircle,
   Send,
+  CreditCard,
+  Crown,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useApi } from "@/hooks/use-api";
 import { useWorkspace } from "@/components/workspace-provider";
 import { useAuth } from "@/components/auth-provider";
+import { useSubscription } from "@/components/subscription-provider";
 import {
   MeetingCreateDialog,
   TaskCreateDialog,
@@ -607,6 +610,9 @@ function SettingsPage() {
           </div>
         </Card>
 
+        {/* Subscription & Billing */}
+        <SubscriptionCard />
+
         {/* Profile */}
         <Card className="p-5">
           <div className="flex items-center gap-2">
@@ -764,5 +770,96 @@ export function WorkspacePage({
     <div className="min-h-[calc(100vh-70px)] bg-[radial-gradient(ellipse_at_top_right,rgba(16,185,129,.06),transparent_38%)] p-5 lg:p-8">
       {component}
     </div>
+  );
+}
+
+function SubscriptionCard() {
+  const { sub } = useSubscription();
+  if (!sub) return null;
+
+  const planLabel =
+    sub.plan === "lifetime" ? "Lifetime" :
+    sub.plan === "yearly" ? "Yearly" :
+    sub.plan === "monthly" ? "Monthly" :
+    sub.plan === "expired" ? "Expired" :
+    "Free Trial";
+
+  const statusLabel =
+    sub.status === "active" ? "Active" :
+    sub.status === "past_due" ? "Past due" :
+    sub.status === "canceled" ? "Canceled" :
+    sub.status === "expired" ? "Expired" : "Active";
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-center gap-2">
+        <CreditCard size={18} className="text-emerald-300" />
+        <p className="font-medium">Subscription &amp; Billing</p>
+      </div>
+      <div className="mt-4 space-y-3">
+        <div className="flex items-center justify-between rounded-xl border border-white/[.06] bg-white/[.02] px-4 py-3">
+          <div className="flex items-center gap-3">
+            {sub.plan === "lifetime" ? (
+              <Crown size={16} className="text-amber-300" />
+            ) : (
+              <CreditCard size={16} className="text-zinc-500" />
+            )}
+            <div>
+              <p className="text-sm text-white">{planLabel}</p>
+              <p className="text-[11px] text-zinc-500">Current plan</p>
+            </div>
+          </div>
+          <span className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
+            sub.status === "active"
+              ? "bg-emerald-300/10 text-emerald-300"
+              : "bg-red-400/10 text-red-300"
+          }`}>
+            {statusLabel}
+          </span>
+        </div>
+
+        {sub.plan === "trial" && sub.trial_end && (
+          <div className="flex items-center justify-between rounded-xl border border-white/[.06] bg-white/[.02] px-4 py-3">
+            <div>
+              <p className="text-sm text-white">
+                {sub.days_remaining > 0
+                  ? `${sub.days_remaining} day${sub.days_remaining === 1 ? "" : "s"} remaining`
+                  : "Trial ended"}
+              </p>
+              <p className="text-[11px] text-zinc-500">
+                Trial ends {new Date(sub.trial_end).toLocaleDateString()}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {sub.paid_until && (sub.plan === "monthly" || sub.plan === "yearly") && (
+          <div className="flex items-center justify-between rounded-xl border border-white/[.06] bg-white/[.02] px-4 py-3">
+            <div>
+              <p className="text-sm text-white">
+                Renews {new Date(sub.paid_until).toLocaleDateString()}
+              </p>
+              <p className="text-[11px] text-zinc-500">
+                {sub.days_remaining} day{sub.days_remaining === 1 ? "" : "s"} left in billing period
+              </p>
+            </div>
+          </div>
+        )}
+
+        {sub.is_platform_admin && (
+          <p className="text-xs text-zinc-500">
+            You have platform admin access — all features unlocked.
+          </p>
+        )}
+
+        <Link href="/payments">
+          <Button variant="secondary" size="sm" className="w-full">
+            {sub.plan === "trial" && sub.days_remaining <= 7
+              ? "Upgrade now"
+              : "Manage billing"}
+          </Button>
+        </Link>
+      </div>
+    </Card>
   );
 }

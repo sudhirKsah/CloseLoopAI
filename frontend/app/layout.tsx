@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { AuthProvider } from "@/components/auth-provider";
+import { SubscriptionProvider } from "@/components/subscription-provider";
 import { ToastProvider } from "@/components/ui/toast";
 export const metadata: Metadata = {
   title: "Pathayo — Execution intelligence powered by CloseLoop AI",
@@ -16,7 +17,9 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body>
         <AuthProvider>
-          <ToastProvider>{children}</ToastProvider>
+          <SubscriptionProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </SubscriptionProvider>
         </AuthProvider>
       </body>
     </html>
